@@ -1,0 +1,108 @@
+Name      R16_STD;
+PartNo    R16-19;
+Date      2026-10-12;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Fetch and Control v2;
+Location  U-STD;
+Device    g22v10;
+
+/*  Reggie-16 decode, F&C v2's sixth decode device: the stores with
+ *  displacement (Reggie16_Proposed_v2.md section 10, ISA section 6.5),
+ *  and the write address select WSEL[1:0], which leaves R16_EXEC and
+ *  R16_IMM to free a pin on each for STD.  v1's F&C has no such
+ *  device; its five decode GALs are R16_COND (unchanged on v2),
+ *  R16_SEQ, R16_EXEC, R16_IMM and R16_MISC, whose v2 burns are the
+ *  _V2 sources.
+ *
+ *  STD marks a store with displacement, the base the word's [12:9]:
+ *    0x1A00-0x1BFF  [12:9] = 1101  ST [r13+imm5],rb  both modes
+ *    0x1600-0x17FF  [12:9] = 1011  ST [r11+imm5],rb  user mode (IE set)
+ *  In kernel mode the r11 block is DI, which R16_MISC_V2 decodes as
+ *  v1 does.  0x1800-0x19FF ([12:9] = 1100) stays a no-op.  STD is raw:
+ *  no state qualifier.  Every consumer qualifies it with T2 or T3 -
+ *  R16_SEQ_V2 (pin 19), R16_EXEC_V2 (pin 22), R16_IMM_V2 (pin 15) - and
+ *  IE, its one non-IR input, moves only at state-ending rises (the IE
+ *  flop clocks on gated CLK), so STD is steady through every state
+ *  that reads it.  R16_MISC_V2 decodes the same two blocks from its
+ *  own inputs for MARPH: it has no free pin.
+ *
+ *  WADDR mux encoding (U12/U13, 2x '153), as on v1:
+ *    WSEL1 WSEL0   source
+ *      0     0     rd  @ IR[12:9]
+ *      0     1     r15 (hardwired 1111)
+ *      1     0     rb  @ IR[8:5]     - update-form pointer writeback
+ *      1     1     r12 (hardwired 1100) - interrupt-entry link save
+ *  A store writes no register: WE is off in its T2 and T3, and WSEL
+ *  is 00 there, so WADDR is 1101 or 1011 and the r10 compare (KVIOL)
+ *  never fires on a store.
+ *
+ *  WSEL0'S T1 HOLD IS REQUIRED by Reggie16_Datapath_Sequencing.md's
+ *  write-port edge rule: without it WSEL falls to 00 at T1 and WADDR
+ *  parks on rd @ IR[12:9] of the still-latched previous instruction,
+ *  false-hitting the r10 compare with IE set whenever that word
+ *  carries 1010 there (EI, 0x1400).  Pin it in any regenerated truth
+ *  table.
+ *
+ *  HAZARD TERMS (R16_Machine_Margins.md item 10).  v1's WSEL0 holds T0
+ *  and T1 with two terms, a static-1 hazard at the T0 to T1 rise, the
+ *  edge that closes every instruction's PC write; here one term,
+ *  !ST2 & !ST1, holds both.  A taken branch writes r15 in T2 and the
+ *  fetch writes it in T0, and T2 to T0 changes ST1 alone, so its term
+ *  spans both states (!ST2 & !ST0): COND and the IR hold across that
+ *  edge, a Bcc capturing no flag.  Both are the same function as
+ *  v1's WSEL0 at every input.
+ *
+ *  WSEL1 = ST2 & !ST1 covers {T4, TI0} (rb for the update forms'
+ *  pointer writeback, 1100 for the entry's link save).  It needs no
+ *  RST: reset holds the counter at 0, so ST2 is false throughout, as
+ *  on v1's R16_IMM.
+ *
+ *  Term counts: WSEL0 5, STD 2, WSEL1 1.
+ *
+ *  Swept at every input against v1's map, and with the set against
+ *  v1's over every word, mode and state (Reggie16_PLD_Notes.md
+ *  section 9).
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = IR15;
+PIN  2 = IR14;
+PIN  3 = IR13;
+PIN  4 = IR12;
+PIN  5 = IR11;
+PIN  6 = IR10;
+PIN  7 = IR9;
+PIN  8 = ST2;
+PIN  9 = ST1;
+PIN 10 = ST0;
+PIN 11 = RST;
+PIN 13 = IE;                    /* IE flop Q - see header              */
+
+/* ---- inputs on macrocell pins ---- */
+PIN 14 = COND;                  /* from R16_COND pin 22                */
+
+/* ---- outputs ---- */
+/*  Pins 15-20 spare.                                                  */
+PIN 21 = WSEL1;                 /* 12 avail, 1 used - WADDR '153 sel   */
+PIN 22 = WSEL0;                 /* 10 avail, 5 used - WADDR '153 sel   */
+PIN 23 = STD;                   /*  8 avail, 2 used                    */
+
+/* ================= shape ================= */
+SH00 = !IR15 & !IR14 & !IR13;
+
+/* ================= the stores with displacement ================= */
+STD = SH00 & IR12 &  IR11 & !IR10 & IR9             /* r13, both modes */
+    # SH00 & IR12 & !IR11 &  IR10 & IR9 & IE;       /* r11, user mode  */
+
+/* ================= write address select ================= */
+WSEL0 = RST                         /* reset aims at r15               */
+      # !ST2 & !ST1                 /* T0 fetch writes r15, held       */
+                                    /*   through T1 - REQUIRED         */
+      # !ST2 & !ST0 & SH00 & COND   /* taken branch writes r15 in T2,  */
+                                    /*   held into T0                  */
+      # ST2 & ST0                   /* TI0 -> 11, TI2 -> 01            */
+      # ST2 & ST1;                  /* TI1 -> 01 (TI2 again, harmless) */
+
+WSEL1 = ST2 & !ST1;                 /* T4 -> rb (10), TI0 -> 1100 (11) */

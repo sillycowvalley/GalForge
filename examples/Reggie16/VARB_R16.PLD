@@ -1,0 +1,113 @@
+Name      VARB_R16;
+PartNo    R16-32;
+Date      2026-10-27;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Video card (Video_Card.md);
+Location  U2;
+Device    g22v10;
+
+/*  Reggie-16 video card, the text memory's arbiter, clocked on DOTCLK.
+ *  Every character time is eight dots, DOT[2:0] from HTIM_R16: dots 0-4
+ *  are the video fetch's (the memory's /OE low, the address mux on the
+ *  video address from dot 0 to dot 3), dots 5-7 the CPU's window, one
+ *  operation a window (Video_Card.md, CPU side):
+ *      a write    /WE and /LOE dots 5-6: the write latch onto the
+ *                 memory's bus, committed as /WE rises; CNTCLK rises
+ *                 at the same edge, so the address counter steps on.
+ *      a read     /LOE dots 5-6, nothing written; CNTCLK steps on.
+ *      a load     /LOE dots 5-6 and /CLD low: CNTCLK loads the counter
+ *                 from the write latch, which took the word at /WRL.
+ *      a prefetch /OE dots 5-7 at the counter's address; RCLK rises at
+ *                 dot 6's end into the read latch.
+ *  A write, a read or a load is followed by a prefetch in the next
+ *  window, so the read latch always holds the word at the counter.
+ *
+ *  The state E[2:0] remembers the strobe and walks the operation:
+ *      000 IDLE    001 STROBE_W   010 STROBE_R   011 STROBE_L
+ *      100 PREF    101 PEND_W     110 PEND_R     111 PEND_L
+ *  A strobe seen moves IDLE to its STROBE state (a load is also a
+ *  write, so /ADDRLD wins); its release to PEND; a PEND state's window
+ *  starts only from dot 4 (an output asserted at dot 5 is the proof
+ *  that it started), and its end at dot 7 moves it to PREF, whose
+ *  window ends at dot 7 in IDLE.  Strobes reach the card at least
+ *  1.0 us apart at 4 MHz, and a whole operation takes at most 0.8 us.
+ *
+ *  Every output is a register, so each is glitch-free and decodes one
+ *  dot early: X.d is X's value for the next dot.  The address counter
+ *  and the read latch clock on CNTCLK's and RCLK's rising edges.
+ *
+ *  Term counts: E2 8, E1 7, E0 6, OE 5, WE 2, LOE 3, CLD 1,
+ *  CNTCLK 1, RCLK 1.  Pin 14 is spare.
+ */
+
+/* ---- inputs ---- */
+PIN  1 = DOTCLK;                /* the can, 25 MHz                     */
+PIN  2 = WRL_L;                 /* /WRL pin level, VBUS_R16            */
+PIN  3 = ADDRLD_L;              /* /ADDRLD pin level, VBUS_R16         */
+PIN  4 = DATARD_L;              /* /DATARD pin level, VBUS_R16         */
+PIN  5 = DOT0;                  /* HTIM_R16                            */
+PIN  6 = DOT1;
+PIN  7 = DOT2;
+
+/* ---- outputs, all registered ---- */
+PIN 23 = E2;                    /*  8 avail, 8 used - state            */
+PIN 22 = E1;                    /* 10 avail, 7 used - state            */
+PIN 21 = E0;                    /* 12 avail, 6 used - state            */
+PIN 20 = !OE;                   /* 14 avail, 5 used - CY7C199s' /OE    */
+PIN 19 = !WE;                   /* 16 avail, 2 used - CY7C199s' /WE    */
+PIN 18 = !LOE;                  /* 16 avail, 3 used - write latch /OE  */
+PIN 17 = !CLD;                  /* 14 avail, 1 used - counter /LD      */
+PIN 16 = CNTCLK;                /* 12 avail, 1 used - counter CLK      */
+PIN 15 = RCLK;                  /* 10 avail, 1 used - read latch CLK   */
+
+/* ================= the dot ================= */
+D4 = DOT2 & !DOT1 & !DOT0;
+D5 = DOT2 & !DOT1 & DOT0;
+D6 = DOT2 & DOT1 & !DOT0;
+
+/* ================= the state ================= */
+E2.d = !E2 & E0 & WRL_L                         /* W or L released     */
+     # !E2 & E1 & !E0 & DATARD_L                /* R released          */
+     # E2 & E0                                  /* PEND_W, PEND_L      */
+     # E2 & E1                                  /* PEND_R, PEND_L      */
+     # E2 & !DOT2                               /* PREF until its end  */
+     # E2 & !DOT1
+     # E2 & !DOT0
+     # E2 & !RCLK;
+
+E1.d = !E2 & !E1 & !ADDRLD_L                    /* to STROBE_L         */
+     # !E2 & !E1 & !E0 & !DATARD_L              /* to STROBE_R         */
+     # E1 & !E2                                 /* STROBE_R, STROBE_L  */
+     # E1 & !DOT2                               /* PEND_R, PEND_L      */
+     # E1 & !DOT1                               /*   until their end   */
+     # E1 & !DOT0
+     # E1 & !CNTCLK;
+
+E0.d = !E2 & !E1 & !E0 & !WRL_L                 /* to STROBE_W or _L   */
+     # !E2 & E0                                 /* STROBE_W, STROBE_L  */
+     # E0 & !DOT2                               /* PEND_W, PEND_L      */
+     # E0 & !DOT1                               /*   until their end   */
+     # E0 & !DOT0
+     # E0 & !CNTCLK;
+
+/* ================= the memory ================= */
+OE.d   = !DOT2                                  /* video, dots 1-4     */
+       # DOT2 & DOT1 & DOT0                     /* video, dot 0        */
+       # D4 & E2 & !E1 & !E0                    /* PREF starts         */
+       # D5 & OE                                /*   and runs to dot 7 */
+       # D6 & OE;
+
+WE.d   = D4 & E2 & !E1 & E0                     /* PEND_W, dots 5-6    */
+       # D5 & WE;
+
+LOE.d  = D4 & E2 & E0                           /* PEND_W, PEND_L      */
+       # D4 & E2 & E1                           /* PEND_R, PEND_L      */
+       # D5 & LOE;
+
+CLD.d  = E2 & E1 & E0;                          /* PEND_L              */
+
+CNTCLK.d = D6 & LOE;                            /* rises at dot 6's end */
+
+RCLK.d = D6 & OE;                               /* rises at dot 6's end */

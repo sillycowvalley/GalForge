@@ -1,0 +1,5 @@
+* text=auto
+
+# A .jed file's transmission checksum counts every byte, CRs included, so
+# JEDEC files are stored exactly as written: never translate their line ends.
+*.jed binary

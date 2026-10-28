@@ -1,0 +1,109 @@
+Name      R16_COND;
+PartNo    R16-01;
+Date      2026-08-10;
+Revision  B;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Fetch and Control;
+Location  U-COND;
+Device    g22v10;
+
+/*  Reggie-16 decode, device 1 of 5, fitted as U16 on the Fetch &
+ *  Control board: the branch condition COND and the flag capture
+ *  enables /FLGC and /FLGNZ.  Flag capture is at T2 (two-clock
+ *  fetch).  Auto-update forms capture no flags (a pointer bump is
+ *  data movement - ISA section 4).
+ *
+ *  NO RST PIN.  There is none left: twelve IR bits, three ST bits and
+ *  four flags fill nineteen of the twenty-two signal pins, and the
+ *  three outputs take the rest.  Safe because the T counter sits at T0
+ *  throughout reset and every output here is T2-gated, so nothing can
+ *  assert while RST is high.  If the clock module's reset behaviour
+ *  ever changes so that ST can leave 0 during reset, this device needs
+ *  re-examining first.
+ *
+ *  COND is gated by IR12 here.  R16_SEQ and R16_EXEC rely on that
+ *  gating - their shape-00 terms cannot see IR12 (EXEC) or choose not
+ *  to repeat the gate (SEQ ANDs with COND anyway).  Removing IR12 from
+ *  the BCC term below silently turns HLT and NOP into taken branches.
+ *
+ *  HAND-DERIVED, pending mechanical regeneration.  Term counts:
+ *  FLGNZ 10, COND 8, FLGC 7.
+ *
+ *  Verified in the machine seam (R16_Machine_Seam.ttlproj): PASS -
+ *  3 of 3 benches ran to completion, 200,704 assertions, 0 faults
+ *  (R16_Machine_Qualification.md).
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = IR15;
+PIN  2 = IR14;
+PIN  3 = IR13;
+PIN  4 = IR12;
+PIN  5 = IR11;
+PIN  6 = IR10;
+PIN  7 = IR9;
+PIN  8 = IR4;
+PIN  9 = IR3;
+PIN 10 = IR2;
+PIN 11 = IR1;
+PIN 13 = IR0;
+
+/* ---- inputs on macrocell pins ---- */
+PIN 14 = ST2;
+PIN 15 = ST1;
+PIN 16 = ST0;
+PIN 17 = ZF;
+PIN 18 = NF;
+PIN 19 = CF;
+PIN 20 = VF;
+
+/* ---- outputs ---- */
+PIN 21 = !FLGNZ;                /* 12 avail, 10 used                   */
+PIN 22 = COND;                  /* 10 avail,  8 used - to SEQ, EXEC    */
+PIN 23 = !FLGC;                 /*  8 avail,  7 used                   */
+
+/* ================= T-states ================= */
+T2 = !ST2 & ST1 & !ST0;
+
+/* ================= class and shape ================= */
+C1   =  IR15;
+SH10 = !IR15 &  IR14 & !IR13;
+BCC  = !IR15 & !IR14 & !IR13 & !IR12;   /* the IR12 gate - see header */
+
+ADJ  = SH10 & IR4;
+
+/* ================= flag capture enables ================= */
+FLGC = T2 & C1 & !IR14              /* ADD ADDC SUB SUBC              */
+     # T2 & ADJ
+     # T2 & SH10 & !IR4 & !IR3 & !IR2 & IR1   /* SHR forms            */
+     # T2 & SH10 & !IR4 & !IR3 & !IR2 & IR0
+     # T2 & SH10 & !IR4 & !IR3 &  IR2 & IR1   /* CMP family           */
+     # T2 & SH10 & !IR4 & !IR3 &  IR2 & IR0
+     # T2 & SH10 & !IR4 &  IR3 & !IR2 & !IR1 & !IR0;  /* CMNC         */
+/* 7 terms of pin 23's 8 - the set's runner-up after FC3.              */
+
+FLGNZ = T2 & C1 & !IR14             /* every class-1 op except LDI    */
+      # T2 & C1 & !IR13
+      # T2 & C1 & !IR4
+      # T2 & ADJ
+      # T2 & SH10 & !IR4 & !IR3 & !IR2 & IR1
+      # T2 & SH10 & !IR4 & !IR3 & !IR2 & IR0
+      # T2 & SH10 & !IR4 & !IR3 &  IR2 & IR1
+      # T2 & SH10 & !IR4 & !IR3 &  IR2 & IR0
+      # T2 & SH10 & !IR4 &  IR3 & !IR2 & !IR1 & !IR0
+      # T2 & SH10 & !IR4 &  IR3 & !IR2 &  IR1 &  IR0;  /* TST         */
+/* 10 terms of pin 21's 12.                                            */
+
+/* ================= branch condition =================
+ * cond @ IR[11:9]: [2:1] selects the flag, [0] inverts.
+ * Stateless: the T gating lives in the consumers.
+ */
+COND = BCC & !IR11 & !IR10 & !IR9 &  ZF     /* EQ */
+     # BCC & !IR11 & !IR10 &  IR9 & !ZF     /* NE */
+     # BCC & !IR11 &  IR10 & !IR9 &  CF     /* CS */
+     # BCC & !IR11 &  IR10 &  IR9 & !CF     /* CC */
+     # BCC &  IR11 & !IR10 & !IR9 &  NF     /* MI */
+     # BCC &  IR11 & !IR10 &  IR9 & !NF     /* PL */
+     # BCC &  IR11 &  IR10 & !IR9 &  VF     /* VS */
+     # BCC &  IR11 &  IR10 &  IR9 & !VF;    /* VC */

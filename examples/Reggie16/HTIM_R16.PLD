@@ -1,0 +1,120 @@
+Name      HTIM_R16;
+PartNo    R16-33;
+Date      2026-10-27;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Video card (Video_Card.md);
+Location  U3;
+Device    g22v10;
+
+/*  Reggie-16 video card, the horizontal timing, clocked on DOTCLK.
+ *  It counts the dot, DOT[2:0], 0-7, and DOT2 is the character clock
+ *  CCLK: the character and line counters ('163s) step at its rise, at
+ *  dot 3's end, so the column COL[6:0] holds its value from dot 4 to the
+ *  next dot 3 (one "window").  COL settles a '163's delay after that
+ *  edge, past dot 4's sample, so no equation reads COL at dot 4: there
+ *  every output keeps its value or ignores COL.
+ *
+ *  A cell fetched in window c shows its eight dots from dot 2 of window
+ *  c + 1 to dot 1 of window c + 2 (Video_Card.md, Character path).  On
+ *  the line, dot t = 8 * COL + ((DOT - 4) mod 8), 800 dots:
+ *      visible   t 14-653      cells 0-79, set at (1,1), cleared at (81,1)
+ *      HSYNC     t 670-765     set at (83,1), cleared at (95,1)
+ *  Each is a register set and cleared at a dot 1, so it changes at a
+ *  dot 2 boundary.  CG (the colour selects' enable) sets only with DEN
+ *  and outside VBLANK, so a display enabled mid-line shows from the
+ *  next line.
+ *
+ *  LINEEN and CCLR hold dots 6 to 4 of window 99, about the CCLK edge
+ *  that ends it: the line counter steps and the column counter clears.
+ *  LD loads the shifter at dot 1's end, and F0CLK takes the first fetch
+ *  latch and the colour stage at the same edge.  CUR marks a cell's
+ *  first two dots, which show in dots 2-3 while COL holds the cell's
+ *  column plus one, when the cursor's comparators match.
+ *
+ *  Every output is a register: X.d is X's value for the next dot.
+ *  Term counts: DOT0 1, DOT1 2, DOT2 3, LINEEN 4, CCLR 4, HSYNC 11,
+ *  CG 11, LD 1, F0CLK 1, CUR 2.  All ten OLMCs; pin 13 unused.
+ */
+
+/* ---- inputs ---- */
+PIN  1 = DOTCLK;                /* the can, 25 MHz                     */
+PIN  2 = COL0;                  /* character counter, '163s            */
+PIN  3 = COL1;
+PIN  4 = COL2;
+PIN  5 = COL3;
+PIN  6 = COL4;
+PIN  7 = COL5;
+PIN  8 = COL6;
+PIN  9 = VBLANK;                /* VTIM_R16                            */
+PIN 10 = DEN;                   /* display enable '74                  */
+PIN 11 = MATCH_L;               /* /MATCH pin level, cursor '688s      */
+
+/* ---- outputs, all registered ---- */
+PIN 23 = LINEEN;                /*  8 avail, 4 used - line '163s ENP   */
+PIN 22 = !CCLR;                 /* 10 avail, 4 used - column '163s /CLR */
+PIN 21 = DOT2;                  /* 12 avail, 3 used - CCLK             */
+PIN 20 = DOT1;                  /* 14 avail, 2 used                    */
+PIN 19 = !CG;                   /* 16 avail, 11 used - colour /E       */
+PIN 18 = !HSYNC;                /* 16 avail, 11 used - VGA HSYNC       */
+PIN 17 = DOT0;                  /* 14 avail, 1 used                    */
+PIN 16 = LD;                    /* 12 avail, 1 used - shifter load     */
+PIN 15 = F0CLK;                 /* 10 avail, 1 used - word 0, colours  */
+PIN 14 = CUR;                   /*  8 avail, 2 used - cursor bar       */
+
+/* ================= the dot ================= */
+DOT0.d = !DOT0;
+DOT1.d = DOT1 & !DOT0
+       # !DOT1 & DOT0;
+DOT2.d = DOT2 & !DOT1
+       # DOT2 & !DOT0
+       # !DOT2 & DOT1 & DOT0;
+
+/* ================= the line's end, column 99 ================= */
+LINEEN.d = COL6 & COL5 & !COL4 & !COL3 & !COL2 & COL1 & COL0
+           & DOT2 & !DOT1 & DOT0                /* set at (99,5)       */
+         # LINEEN & !DOT2                       /* held to dot 4       */
+         # LINEEN & DOT1
+         # LINEEN & DOT0;
+CCLR.d   = COL6 & COL5 & !COL4 & !COL3 & !COL2 & COL1 & COL0
+           & DOT2 & !DOT1 & DOT0
+         # CCLR & !DOT2
+         # CCLR & DOT1
+         # CCLR & DOT0;
+
+/* ================= visible, cells 0-79 ================= */
+CG.d = !COL6 & !COL5 & !COL4 & !COL3 & !COL2 & !COL1 & COL0
+       & !DOT2 & !DOT1 & DOT0 & DEN & !VBLANK   /* set at (1,1)        */
+     # CG & !COL6                               /* held until (81,1)   */
+     # CG & COL5
+     # CG & !COL4
+     # CG & COL3
+     # CG & COL2
+     # CG & COL1
+     # CG & !COL0
+     # CG & DOT2
+     # CG & DOT1
+     # CG & !DOT0;
+
+/* ================= HSYNC, t 670-765 ================= */
+HSYNC.d = COL6 & !COL5 & COL4 & !COL3 & !COL2 & COL1 & COL0
+          & !DOT2 & !DOT1 & DOT0                /* set at (83,1)       */
+        # HSYNC & !COL6                         /* held until (95,1)   */
+        # HSYNC & COL5
+        # HSYNC & !COL4
+        # HSYNC & !COL3
+        # HSYNC & !COL2
+        # HSYNC & !COL1
+        # HSYNC & !COL0
+        # HSYNC & DOT2
+        # HSYNC & DOT1
+        # HSYNC & !DOT0;
+
+/* ================= the fetch and the shifter ================= */
+LD.d    = !DOT2 & !DOT1 & !DOT0;                /* high in dot 1       */
+F0CLK.d = !DOT2 & !DOT1 & DOT0;                 /* rises at dot 1's end */
+
+/* ================= the cursor's bar ================= */
+CUR.d = !MATCH_L & !DOT2 & !DOT1 & DOT0         /* dot 2               */
+      # !MATCH_L & !DOT2 & DOT1 & !DOT0;        /* dot 3               */

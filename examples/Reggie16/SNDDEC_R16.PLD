@@ -1,0 +1,84 @@
+Name      SNDDEC_R16;
+PartNo    R16-30;
+Date      2026-10-26;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Sound card (Reggie16_Sound_Card.md);
+Location  U1;
+Device    g22v10;
+
+/*  Reggie-16 sound card, the whole decode: two write-only words, the
+ *  YM2149F's register number at 0x3FCE and its value at 0x3FCF.
+ *  Reggie16_Sound_Card.md owns the card; this device solely owns
+ *  /SNDWR, BC2 and /YMRST.
+ *
+ *  /SNDWR is the store's strobe for either word.  The '574 takes D[7:0]
+ *  and the pulse generator's catch flop is clocked on its RISING edge,
+ *  the store completing, the LED port's convention; BDIR follows one to
+ *  two can clocks later, after the store has ended.
+ *
+ *  BC2 is A0 of the last store to the card, so it must outlive the
+ *  store: a register on pin 1, which is /MEMWR, clocked at the end of
+ *  every store anywhere.  A store to the card loads A0; any other store
+ *  reloads the register's own value.  The hold is !SEL & BC2, sixteen
+ *  terms with the load, so BC2 sits on a sixteen-term OLMC (pin 19).
+ *  The register powers up 0.
+ *
+ *  /YMRST is RST inverted, the chip's /RESET: RST (active high) clears
+ *  every YM2149 register, every level 0, silent.
+ *
+ *  A 22V10 for the input width: A[15:0], /MEMWR and RST are 18 inputs,
+ *  twelve dedicated pins plus six macrocell pins declared as inputs.
+ *  Board-side: /SNDWR carries a 10 k pull-up, so an unprogrammed or
+ *  absent GAL never strobes the latch or the catch flop.
+ *
+ *  MEMWR_L is the PIN LEVEL of the active-low strobe.
+ *
+ *  Checked: swept through TTLSim's 22V10 layout against these
+ *  equations over every input and register state, 0 mismatches.
+ *
+ *  Term counts: SNDWR 1, BC2 16, YMRST 1.
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = MEMWR_L;               /* /MEMWR pin level, and BC2's clock   */
+PIN  2 = A0;
+PIN  3 = A1;
+PIN  4 = A2;
+PIN  5 = A3;
+PIN  6 = A4;
+PIN  7 = A5;
+PIN  8 = A6;
+PIN  9 = A7;
+PIN 10 = A8;
+PIN 11 = A9;
+PIN 13 = A10;
+
+/* ---- inputs on macrocell pins (used purely as inputs) ---- */
+PIN 14 = A11;
+PIN 15 = A12;
+PIN 16 = A13;
+PIN 17 = A14;
+PIN 18 = A15;
+PIN 20 = RST;                   /* the machine's reset, active high    */
+
+/* ---- outputs ---- */
+/*  Pin 21 spare (12 terms), unconnected.                             */
+PIN 23 = !SNDWR;                /*  8 avail, 1 used - '574 and catch CLK */
+PIN 22 = !YMRST;                /* 10 avail, 1 used - YM2149 /RESET      */
+PIN 19 = BC2;                   /* 16 avail, 16 used - registered        */
+
+/* ================= the window ================= */
+WINDOW = !A15 & !A14 & A13 & A12 & A11 & A10 & A9 & A8 & A7 & A6;
+
+/*  0x3FCE and 0x3FCF: A[5:1] = 00111.                                */
+SEL = WINDOW & !A5 & !A4 & A3 & A2 & A1;
+
+/* ================= outputs ================= */
+SNDWR = SEL & !MEMWR_L;
+
+BC2.d = SEL & A0
+      # !SEL & BC2;
+
+YMRST = RST;

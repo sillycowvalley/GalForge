@@ -1,0 +1,71 @@
+Name      gal22v10_combinational ;
+PartNo    TTLSIM22C ;
+Date      07/02/2026 ;
+Revision  01 ;
+Designer  TTLSim ;
+Company   TTLSim ;
+Assembly  None ;
+Location  ;
+Device    g22v10 ;
+
+/*
+ * GAL22V10 geometry-validation design (combinational).
+ *
+ * Chosen to pin down the fuse-map geometry unambiguously:
+ *   - Outputs on pins 23 and 14 (first and last OLMC blocks: rows adjacent
+ *     to the AR and SP rows) plus middle blocks 21, 19, 18, 16, 15.
+ *   - y19 has 12 product terms, reaching deep into a 16-term block.
+ *   - y18 is active-low (S0 polarity, combinational).
+ *   - y21 carries a .oe product term (OE-row position).
+ *   - y15 reuses y16 (combinational pin-feedback column).
+ *   - Every dedicated input is used, including pin 1 and pin 13
+ *     (validates all 12 dedicated-input column pairs).
+ *   - OLMCs on pins 17, 20, 22 left unused (erased-block handling).
+ */
+
+PIN 1  = m ;   /* pin 1 as a plain input in a combinational design */
+PIN 2  = a ;
+PIN 3  = b ;
+PIN 4  = c ;
+PIN 5  = d ;
+PIN 6  = e ;
+PIN 7  = f ;
+PIN 8  = g ;
+PIN 9  = h ;
+PIN 10 = i ;
+PIN 11 = j ;
+PIN 13 = k ;
+
+PIN 23 = y23 ;    /*  8-term block, rows immediately after AR      */
+PIN 21 = y21 ;    /* 12-term block, tri-stated by .oe              */
+PIN 19 = y19 ;    /* 16-term block, filled with 12 terms           */
+PIN 18 = !y18 ;   /* 16-term block, active low                     */
+PIN 16 = y16 ;    /* 12-term block, XOR expansion                  */
+PIN 15 = y15 ;    /* 10-term block, uses y16 pin feedback          */
+PIN 14 = y14 ;    /*  8-term block, rows immediately before SP     */
+
+y23    = a & b ;
+
+y21    = a # d ;
+y21.oe = e & k ;
+
+y19    = a # b # c # d # e # f # g # h # i # j # k # m ;
+
+y18    = a & b  #  c & d ;              /* pin is !y18 (active low) */
+
+y16    = a $ b $ c ;                    /* expands to 4 terms */
+
+y15    = y16 & j ;                      /* pin feedback of y16 */
+
+y14    = k & m ;                        /* last block; pins 13 and 1 */
+
+/*
+ * Expected truth behaviour (for the livetest later):
+ *   y23 = a AND b
+ *   y21 = a OR d, driven only while (e AND k), else Hi-Z
+ *   y19 = OR of all twelve inputs
+ *   pin 18 = NOT(a&b OR c&d)
+ *   y16 = a XOR b XOR c
+ *   y15 = y16 AND j   (reads pin 16 back)
+ *   y14 = k AND m
+ */

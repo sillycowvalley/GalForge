@@ -1,0 +1,47 @@
+Name      gal20v8_simple ;
+PartNo    TTLSIM20S ;
+Date      07/02/2026 ;
+Revision  01 ;
+Designer  TTLSim ;
+Company   TTLSim ;
+Assembly  None ;
+Location  ;
+Device    g20v8as ;
+
+/* ------------------------------------------------------------------
+ * GAL20V8 -- SIMPLE mode  (mnemonic G20V8AS)
+ *
+ * Every macrocell combinational. No global clock / output enable, so
+ * pins 1 and 13 are ORDINARY INPUTS here.
+ * (Contrast gal20v8_registered.pld: pin 1 = CLK, pin 13 = /OE.)
+ *
+ * OLMCs are on pins 22..15; pins 18 and 19 have no feedback in simple
+ * mode, so outputs here use 22/21/20/17.
+ * ------------------------------------------------------------------ */
+
+/* inputs */
+PIN 1  = f ;      /* CLK pin used as a plain input in simple mode  */
+PIN 2  = a ;
+PIN 3  = b ;
+PIN 4  = c ;
+PIN 5  = d ;
+PIN 6  = e ;
+PIN 13 = g ;      /* /OE pin used as a plain input in simple mode  */
+
+/* outputs (all combinational) */
+PIN 22 = yand ;
+PIN 21 = yor ;
+PIN 20 = yxor ;
+PIN 17 = yfg ;
+
+yand = a & b & c & d ;
+yor  = a # b # c # d # e ;
+yxor = a $ b $ c ;
+yfg  = f & g ;
+
+/* Expected (combinational):
+ *   yand = 1  only when a=b=c=d=1
+ *   yor  = 0  only when a=b=c=d=e=0
+ *   yxor = a XOR b XOR c
+ *   yfg  = f AND g          (proves pins 1 and 13 act as inputs)
+ */

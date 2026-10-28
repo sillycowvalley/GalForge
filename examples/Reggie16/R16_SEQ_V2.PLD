@@ -1,0 +1,209 @@
+Name      R16_SEQ_V2;
+PartNo    R16-20;
+Date      2026-10-13;
+Revision  B;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Fetch and Control v2;
+Location  U-SEQ;
+Device    g22v10;
+
+/*  Reggie-16 decode on F&C v2: register port B enable, ALU result
+ *  enable, memory strobes and IR load.  Two-clock fetch (T0 fetch, T1
+ *  memory, T2 execute, T3 LD/ST memory, T4 auto-update writeback);
+ *  store data travels via port A in the update forms and the stores
+ *  with displacement.  v1's R16_SEQ (R16-02 rev E) with one change,
+ *  every other row as v1's:
+ *
+ *  THE STORES WITH DISPLACEMENT.  Pin 19, v1's spare, takes STD from
+ *  R16_STD (Reggie16_Proposed_v2.md section 10, ISA section 6.5):
+ *  0x1A00-0x1BFF in both modes, 0x1600-0x17FF with IE set.  /FOE
+ *  drives D through the store's T2 (base + imm5, which the MAR takes)
+ *  and its T3 (rb, the data), one term spanning both, so D is held
+ *  across the T2 to T3 rise where the MAR closes; /MEMWR writes in T3,
+ *  inside its !CLK and !UVIOL gate, as for any store.  Port B is idle:
+ *  the base and the data ride port A, the immediate the B-Bus.
+ *
+ *  A store's T3 to T0 reload (011 to 000) can pass T1, where /MEMRD
+ *  fetches, with the MAR still on the store's address: the plain ST's
+ *  pulse (R16_Machine_Margins.md item 11), whose fix is on the
+ *  Peripheral card at the 16550's pin 21 if v1 convicts it.
+ *
+ *  PORT A HAS NO ENABLE.  QA is point-to-point (carrier -> ALU16 A
+ *  latch) and /OEA_C is hard-strapped asserted at the carrier - the
+ *  port drives always.  Safe by the sequencing doc's section 1
+ *  exhaustive property: every state that does not read A commits
+ *  nothing A-dependent.  That property REQUIRES R16_EXEC_V2's !RST
+ *  gates on FC0's fetch and hazard terms - never burn this device
+ *  against an EXEC source lacking them.
+ *
+ *  PROTECTED TIER (Reggie16_Interrupt_Architecture.md section 8):
+ *  UVIOL arrives on pin 17, the board-computed U-mode-violation
+ *  condition, one literal:
+ *    UVIOL = MVIOL # KVIOL
+ *    MVIOL = IE & !A15 & !A14         U-mode touch of the fixed quarter
+ *    KVIOL = IE & (WADDR == 1010)     write address is r10
+ *  (F&C support logic - Fetch_Control_Module.md, "The protected
+ *  tier"; A15/A14 off the MAR '573s).  /MEMRD and /MEMWR carry
+ *  !UVIOL at no term cost.  The literal is RAW (no state qualifier)
+ *  and safe here because only state-qualified terms consume it, and
+ *  legal U-mode code never holds a fixed-quarter MAR nor puts 1010 on
+ *  WADDR (r10 is out of the user ABI - naming it traps, even as a
+ *  read operand).  The same net feeds R16_EXEC_V2's WE fence and,
+ *  through TRAPD, the TRAPQ pending flop's D - this device emits no
+ *  trap output.  Kernel code (IE clear) is untouched by construction.
+ *
+ *  INTERRUPT ENTRY (TI0-TI2, ST codes 5-7) rides don't-care covers:
+ *  T4 is reachable only via the update forms and the TI states only
+ *  via the clock module's steered reload, so ST2 alone legally covers
+ *  "T4 or any TI state" in FOE.  RTI (shape-10 sub 01001) is
+ *  datapath-plain MOV: OEB and FOE here, everything else elsewhere.
+ *
+ *  /MEMWR IS PHASE-QUALIFIED: decode & !CLK - a clean low-phase
+ *  write pulse.  ST[2:0] changes at rises, and a multi-bit change
+ *  (T3->T0 = 011->000, TI2->T0 = 111->0000) can transit the decoder
+ *  through a false state for ~ns of '161 output skew - through T3
+ *  itself in the TI2 case, with the interrupted instruction still in
+ *  the IR.  The !CLK term masks the transit: CLK reaches this device
+ *  directly while ST changes arrive later by the T counter's clk->Q
+ *  less the clock tree's delay, since both leave CLKGEN: 14 ns at
+ *  datasheet maxima, about 4.5 ns at typical parts, so the mask wins
+ *  on paper (R16_Machine_Margins.md item 9).  /MEMRD stays full-state
+ *  (reads need the strobe live before the fall for the register
+ *  fence); its transit glitch is bounded turnaround-class overlap on
+ *  D, accepted with rationale in the sequencing doc.  IRLD needs no
+ *  guard - the '377 enable is sampled synchronously.
+ *
+ *  D IS DRIVEN IN THE COMPARES' AND TST'S T2, as R16_SEQ's revision E
+ *  does on v1.  Nothing takes D there, but with D floating a compare
+ *  loses its flag write on the machine
+ *  (R16_Path_To_Unix_Findings.md, issue 5).  FOE takes the shape-10
+ *  subs 001xx (ST's address with CMP, CMN and CMPC), 0100x (CMNC with
+ *  RTI) and 01011 (TST): the ALU's result driven onto D and taken by
+ *  nothing, as SUB's is in its T2 but for the write.  SHR's 0001x and
+ *  00011 stay off it, their T2 being /SOE's, and so does the reserved
+ *  01010, a no-op the F&C captures' benches hold to /FOE high.
+ *
+ *  Term counts: FOE 15, OEB 11, MEMRD 3, MEMWR 3, IRLD 1.
+ *
+ *  Swept at every input against v1's map, and with the set against
+ *  v1's over every word, mode and state (Reggie16_PLD_Notes.md
+ *  section 9).
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = IR15;
+PIN  2 = IR14;
+PIN  3 = IR13;
+PIN  4 = IR12;
+PIN  5 = IR4;
+PIN  6 = IR3;
+PIN  7 = IR2;
+PIN  8 = IR1;
+PIN  9 = IR0;
+PIN 10 = ST2;
+PIN 11 = ST1;
+PIN 13 = ST0;
+
+/* ---- inputs on macrocell pins ---- */
+PIN 14 = RST;
+PIN 15 = COND;                  /* from R16_COND pin 22                */
+PIN 16 = CLK;                   /* write-strobe phase qualifier        */
+PIN 17 = UVIOL;                 /* U-mode violation - see header       */
+PIN 19 = STD;                   /* from R16_STD pin 23 - see header    */
+
+/* ---- outputs, placed by term count ---- */
+/*  No spare macrocells.  The register file's port A enable is a strap
+ *  at the carrier (/OEA_C tied asserted), not a decode output.        */
+PIN 18 = !FOE;                  /* 16 avail, 15 used                   */
+PIN 20 = !OEB;                  /* 14 avail, 11 used                   */
+PIN 21 = !MEMRD;                /* 12 avail,  3 used                   */
+PIN 22 = !IRLD;                 /* 10 avail,  1 used                   */
+PIN 23 = !MEMWR;                /*  8 avail,  3 used                   */
+
+/* ================= T-states =================
+ * T0 fetch (PC to MAR via AQ, PC+1 to r15).  T1 fetch memory.
+ * T2 execute / LD-ST address.  T3 LD-ST memory.  T4 update writeback.
+ */
+T0 = !ST2 & !ST1 & !ST0;
+T1 = !ST2 & !ST1 &  ST0;
+T2 = !ST2 &  ST1 & !ST0;
+T3 = !ST2 &  ST1 &  ST0;
+/*  No T4 node: FOE's ST2 cover takes its only use.                    */
+
+/* ================= class and shape ================= */
+C1   =  IR15;
+SH10 = !IR15 &  IR14 & !IR13;
+
+BCC  = !IR15 & !IR14 & !IR13 & !IR12;
+
+/* ================= shape-10 sub decode ================= */
+ADJ    = SH10 &  IR4;
+MOVI   = SH10 & !IR4 & !IR3 & !IR2 & !IR1 & !IR0;   /* 00000 */
+STI    = SH10 & !IR4 & !IR3 &  IR2 & !IR1 & !IR0;   /* 00100 */
+TSTI   = SH10 & !IR4 &  IR3 & !IR2 &  IR1 &  IR0;   /* 01011           */
+
+/* auto-update family, 01100-01111 */
+UPD    = SH10 & !IR4 &  IR3 &  IR2;
+LDUPD  = UPD & !IR1;                                /* 0110x loads     */
+STUPD  = UPD &  IR1;                                /* 0111x stores    */
+RTI    = SH10 & !IR4 &  IR3 & !IR2 & !IR1 &  IR0;   /* 01001           */
+
+/* two covers for FOE: 001xx is ST, CMP, CMN and CMPC; 0100x is CMNC
+ * and RTI                                                             */
+STCMP  = SH10 & !IR4 & !IR3 &  IR2;                 /* 001xx           */
+CMNRTI = SH10 & !IR4 &  IR3 & !IR2 & !IR1;          /* 0100x           */
+
+/* ================= IR ================= */
+IRLD  = !RST & T1;
+
+/* ================= memory ================= */
+MEMRD = !RST & !UVIOL & (           /* fenced: see header              */
+                 T1                 /* instruction fetch               */
+               # T3 & !IR15 & IR14 & IR13     /* LD  (shape 11)        */
+               # T3 & LDUPD );
+MEMWR = !RST & !CLK & !UVIOL & (    /* fenced: see header              */
+                 T3 & STI
+               # T3 & STUPD
+               # T3 & STD );
+
+/* ================= register port A =================
+ * No equation: the port has no enable.  Where a state does not read
+ * A, A is a don't-care, never a zero - do not add terms or hardware
+ * that assume otherwise.
+ */
+
+/* ================= register port B =================
+ * Class-1 rb, MOV, SHR, compares, plain-ST data.  The update forms
+ * never touch B - their data rides port A.
+ */
+OEB = !RST & ( T2 & C1 & !IR14
+             # T2 & C1 & !IR13
+             # T2 & C1 & !IR4
+             # T2 & MOVI
+             # T2 & SH10 & !IR4 & !IR3 & !IR2 & IR1  /* SHR any form  */
+             # T2 & SH10 & !IR4 & !IR3 & !IR2 & IR0
+             # T2 & SH10 & !IR4 & !IR3 & IR2 & IR1   /* CMP family    */
+             # T2 & SH10 & !IR4 & !IR3 & IR2 & IR0
+             # T2 & SH10 & !IR4 &  IR3 & !IR2 & !IR1 & !IR0  /* CMNC */
+             # T2 & RTI                              /* MOV r15<-r12   */
+             # T3 & STI );
+
+/* ================= ALU result onto D ================= */
+FOE = RST                           /* reset writes ZERO every clock   */
+    # T0                            /* PC+1                            */
+    # T2 & C1                       /* all class 1 including LDI       */
+    # T2 & !IR15 & IR13             /* LDH + LD address                */
+    # T2 & MOVI
+    # T2 & ADJ
+    # T2 & BCC & COND
+    # T2 & STCMP                    /* ST address; CMP, CMN, CMPC      */
+    # T2 & UPD
+    # T2 & CMNRTI                   /* CMNC; RTI pass-B, MOV path      */
+    # T2 & TSTI
+    # T3 & STI                      /* plain store data, pass-B        */
+    # T3 & STUPD                    /* update store data, pass-A       */
+    # !ST2 & ST1 & STD              /* store with displacement: T2's   */
+                                    /*   address and T3's data, held   */
+    # ST2;                          /* T4 writeback and TI0-TI2: all   */
+                                    /* reachable only when driving D   */

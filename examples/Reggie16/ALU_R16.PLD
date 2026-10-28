@@ -1,0 +1,153 @@
+Name      ALU_R16;
+PartNo    R16-06;
+Date      2026-09-23;
+Revision  E;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  ALU16 (single-board 16-bit ALU);
+Location  U-FC;
+Device    g22v10;
+
+/*  Reggie-16 ALU function decoder - ONE device for the whole 16-bit
+ *  ALU16 board.
+ *
+ *  The pin assignment below DEFINES the ALU16 netlist
+ *  (ALU16_Module.ttlproj) rather than matching an existing board: if
+ *  layout wants different pins, change this source first and re-burn.
+ *
+ *  CF is the machine-wide name of the stored carry flag: the pin name
+ *  in R16_COND.PLD (pin 19, with ZF NF VF) and the net name on the
+ *  Fetch & Control, Flag Unit and ALU16 captures.
+ *
+ *  The LDH byte split lives in per-half outputs: S3, S1, M and /CN are
+ *  shared by all four '181s; S2 and S0 exist in L and H flavours that
+ *  differ only at FC 11, where the low half passes A and the high half
+ *  passes B.
+ *
+ *  B sourcing - including zero - belongs to the B-Bus Unit; this
+ *  device has no B-side output.
+ *  Rejected: a B-kill output on PASSA, AINC, ADEC and ZERO - those
+ *  codes do not read B on a '181 at their S codes.
+ *
+ *  Carry in: /CN is computed here.  ADDC and SUBC use the COMPLEMENT of
+ *  the latched carry; /CN asserted = +1.  The CN block below carries
+ *  the derivation and the capture that fixes the polarity.
+ *
+ *  FC map: 0 ADD  1 SUB  2 ADDC  3 SUBC  4 AND  5 OR  6 XOR  7 PASSA
+ *  8 PASSB  9 AINC  10 ZERO  11 LDH-split  12 ADEC.  13-15 free,
+ *  treated as don't-care in the minimised covers.
+ *
+ *  '181s wired for active-high operands: /CN asserted means Cn = 0
+ *  means "plus 1".  AINC asserts it; ADEC must not.
+ *
+ *  HAND-DERIVED, pending mechanical regeneration.  Verified: ALU16
+ *  capture bench tb-alu16a, 226/226 rows, 3,819 assertions, 0 faults.
+ *  Term counts:
+ *  S3 5, S2L 5, S0L 5, S0H 5, S1 4, S2H 4, M 3, CN 3, SUB 1.
+ */
+
+/* ---- inputs ---- */
+PIN  1 = FC3;
+PIN  2 = FC2;
+PIN  3 = FC1;
+PIN  4 = FC0;
+PIN  5 = CF;
+
+/* ---- outputs ---- */
+/*  Pin 14 spare - 8 term macrocell.                                   */
+PIN 15 = S0L;                   /* low pair S0  - differs at FC 11     */
+PIN 16 = S0H;                   /* high pair S0 - differs at FC 11     */
+PIN 17 = S2L;                   /* low pair S2  - differs at FC 11     */
+PIN 18 = S2H;                   /* high pair S2 - differs at FC 11     */
+PIN 19 = S3;                    /* all four '181s                      */
+PIN 20 = S1;                    /* all four '181s                      */
+PIN 21 = M;                     /* all four '181s                      */
+PIN 22 = !CN;                   /* all four... via the carry path      */
+PIN 23 = SUB;                   /* V logic                             */
+
+/* ================= shared S bits ================= */
+/* S3 high for FC 0,2,4,5,7,8,11,12.  Minimised, 5 terms - do not
+ * expand to a per-code list. */
+S3 = !FC3 & !FC2 & !FC0
+   # !FC3 &  FC2 & !FC1
+   # !FC3 &  FC2 &  FC0
+   #  FC3 & !FC1 & !FC0
+   #  FC3 &  FC1 &  FC0;
+
+/* S1 low only for FC 0, 2, 9 - minimised as the high cover, 4 terms.
+ * DO NOT rewrite as a per-code list: ten codes set it. */
+S1 = !FC3 &  FC0
+   #  FC2
+   #  FC3 &  FC1
+   #  FC3 & !FC1 & !FC0;
+
+/* ================= per-half S bits =================
+ * Identical except at FC 11 (1011): L takes pass-A (S=1111),
+ * H takes pass-B (S=1010).
+ */
+S2L = !FC3 & !FC2 &  FC0
+    # !FC3 &  FC2 &  FC0
+    # !FC3 &  FC2 &  FC1 & !FC0
+    #  FC3 &  FC1 &  FC0            /* FC 11 - low half only          */
+    #  FC3 &  FC2 & !FC1 & !FC0;
+
+S2H = !FC3 & !FC2 &  FC0
+    # !FC3 &  FC2 &  FC0
+    # !FC3 &  FC2 &  FC1 & !FC0
+    #  FC3 &  FC2 & !FC1 & !FC0;
+
+S0L = !FC3 & !FC2 & !FC0
+    # !FC3 &  FC2 & !FC1 & !FC0
+    # !FC3 &  FC2 &  FC1 &  FC0
+    #  FC3 & !FC2 &  FC1            /* ZERO 10 and, low half, LDH 11  */
+    #  FC3 &  FC2 & !FC1 & !FC0;
+
+S0H = !FC3 & !FC2 & !FC0
+    # !FC3 &  FC2 & !FC1 & !FC0
+    # !FC3 &  FC2 &  FC1 &  FC0
+    #  FC3 & !FC2 &  FC1 & !FC0     /* ZERO 10 only                   */
+    #  FC3 &  FC2 & !FC1 & !FC0;
+
+/* ================= mode =================
+ * Logic for 4-8, 10, 11; arithmetic for 0-3, 9, 12.  Shared.
+ */
+M = !FC3 &  FC2
+  #  FC3 & !FC2 & !FC1 & !FC0
+  #  FC3 & !FC2 &  FC1;
+
+/* ================= carry in =================
+ * Asserted (Cn = 0, "plus one"): SUB and AINC always; ADDC and SUBC on
+ * the INVERSE of the latched carry.  ADEC deliberately absent.
+ *
+ * The inversion is not optional.
+ * Stored C is the pin-level bit: COUT is the '181s' Cn+4, active low
+ * with active-high operands, reaching U19's D through a non-inverting
+ * '157, so an add that carries stores 0 and a subtract that borrows
+ * stores 1 (Reggie16_Interrupt_Architecture.md 5.1).  The Flag Unit's
+ * read steering is also non-inverting, so CF arrives as that same
+ * stored bit.  Taking the carry in on CF high would take it exactly
+ * when the previous operation did NOT carry: 0x0001_FFFF + 0x0000_0001
+ * gives 0x0001_0000 - short by 65536 in the high word, silently.
+ *
+ * Arbiter: TTLSim capture ttlsim-20260819.log on ALU16_Module.ttlproj -
+ * an add that carries stores CLAT = 0.
+ *
+ * Rejected alternatives, with reasons:
+ *   - invert in the H8.6 path on the Flag Unit: adds a gate to the
+ *     CF-valid head, the largest single item on the ADDC pole at the
+ *     -7 grade (ALU16 requirements R4).  Wrong budget to spend.
+ *   - swap the Flag Unit's read-steering '157 for a pin-compatible
+ *     '158: inverts Z, N and V into R16_COND along with C.
+ *   - invert at capture, COUT into U19's D: redefines the architectural
+ *     flag instead of fixing its consumer, and contradicts the 5.1
+ *     canaries, the emulator and every condition code built on them.
+ *
+ * Three terms.
+ */
+CN = !FC2 & !FC1 & FC0              /* SUB (0001) and AINC (1001)     */
+   # !FC3 & !FC2 & FC1 & !FC0 & !CF   /* ADDC - inverse of stored C */
+   # !FC3 & !FC2 & FC1 &  FC0 & !CF;  /* SUBC - inverse of stored C */
+
+/* ================= subtract (V logic) ================= */
+SUB = !FC3 & !FC2 & FC0;            /* SUB 1, SUBC 3 - and therefore  */
+                                    /* CMP, CMPC, which ride FC 1, 3  */

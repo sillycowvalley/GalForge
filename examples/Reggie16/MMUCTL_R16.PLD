@@ -1,0 +1,91 @@
+Name      MMUCTL_R16;
+PartNo    R16-11;
+Date      2026-10-22;
+Revision  C;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  MMU board (Reggie16_MMU.md);
+Location  U-TBD;
+Device    g22v10;
+
+/*  Reggie-16 MMU board paged-side control: array strobes, MAPMODE
+ *  steering, the two fault legs and the array's chip select.
+ *  Reggie16_MMU.md sections 5, 6 and 8 are the equations of record;
+ *  this file is their source.  MAPDEC_R16 owns the fixed side.
+ *
+ *  ARRSEL on pin 20 drives U19's /1G, the '139 that picks the array
+ *  pair, so the array is chip-selected only for its own accesses, from
+ *  the strobe, with the address settled (R16_Path_To_Unix_Findings.md
+ *  issue 4).  The first MMU board has U19 pin 1 on ground: there the
+ *  pin is lifted from its socket and wired to this one's pin 20.
+ *
+ *  PAGED = A15 # A14 is the translated 48K (A[15:14] != 00).  Every
+ *  output carries it as two terms where a single literal would be
+ *  one; all stay trivially inside a macrocell, same tpd.
+ *
+ *  The write fence: /ARRWE asserts only through a VALID entry, and
+ *  WP yields to !IE so the kernel can write a protected page through
+ *  its window entry.  VALID gates unconditionally - even the kernel
+ *  cannot write through an invalid entry.
+ *
+ *  Revision C: VFAULT is taken only under /MEMRD, which holds a whole
+ *  state, so the map entries a user access reads in passing while its
+ *  address settles (a page crossing, Reggie16_MMU.md section 13 item 9)
+ *  cannot reach TRAPQ.  A write through an invalid entry is not taken
+ *  under /MEMWR, a pulse that ends at the edge TRAPQ samples: it joins
+ *  WPRAW, the leg the '373 latches, and skids as a WP fault does.
+ *
+ *  Fault legs (both IE-gated at source - kernel accesses never fault):
+ *      VFAULT  a read or fetch through an invalid entry, under /MEMRD,
+ *              sampled by TRAPQ at the ending rise
+ *      WPRAW   a write to a protected page or through an invalid
+ *              entry, the raw leg, into the board's '373
+ *              transparent latch (LE = !CLK); MMUVIOL = VFAULT #
+ *              latched WPRAW in one '32 section off-device
+ *
+ *  MEMRD_L / MEMWR_L are the PIN LEVELS of the active-low strobes.
+ *  VALID and WP arrive from the map pair's data pins.
+ *
+ *  Term counts: ARROE 2, ARRWE 4, MAP245 4, MAPWE 2, VFAULT 2, WPRAW 4,
+ *  ARRSEL 4.
+ *  Burn A321 (Output/MMUCTL_R16.jed, BlinkyJED's compile of this
+ *  file): fuse-level parse-back against these equations over all 256
+ *  input rows, 0 mismatches (Reggie16_MMU.md section 8).  Pin
+ *  assignment ratified at capture (R16_MMU.ttlproj), unchanged from
+ *  this source.
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = A15;
+PIN  2 = A14;
+PIN  3 = MEMRD_L;               /* /MEMRD pin level                    */
+PIN  4 = MEMWR_L;               /* /MEMWR pin level                    */
+PIN  5 = MAPMODE;               /* control port bit 3                  */
+PIN  6 = VALID;                 /* map entry bit 8                     */
+PIN  7 = WP;                    /* map entry bit 9                     */
+PIN  8 = IE;                    /* F&C IE flop Q                       */
+/* pins 9, 10, 11, 13 spare inputs                                     */
+
+/* ---- outputs ---- */
+PIN 14 = !ARROE;                /*  8 avail,  2 used                   */
+PIN 15 = !MAPWE;                /* 10 avail,  2 used                   */
+PIN 16 = !ARRWE;                /* 12 avail,  4 used                   */
+PIN 17 = !MAP245;               /* 14 avail,  4 used                   */
+PIN 18 = VFAULT;                /* 16 avail,  2 used - active high     */
+PIN 19 = WPRAW;                 /* 16 avail,  2 used - active high     */
+PIN 20 = !ARRSEL;               /* 14 avail,  4 used - U19 /1G         */
+/* pins 21-23 spare                                                    */
+
+/* ================= nodes ================= */
+MEMRD = !MEMRD_L;
+MEMWR = !MEMWR_L;
+PAGED = A15 # A14;                                   /* the translated 48K */
+
+/* ================= outputs ================= */
+ARROE  = MEMRD & PAGED & !MAPMODE;
+ARRWE  = MEMWR & PAGED & !MAPMODE & VALID & (!WP # !IE);
+MAP245 = PAGED & MAPMODE & (MEMRD # MEMWR);   /* '245 enable; DIR = /MEMRD */
+MAPWE  = MEMWR & PAGED & MAPMODE;
+VFAULT = IE & PAGED & !MAPMODE & !VALID & MEMRD;
+WPRAW  = IE & PAGED & !MAPMODE & MEMWR & (WP # !VALID);
+ARRSEL = PAGED & !MAPMODE & (MEMRD # MEMWR);  /* '139 /1G: the array for its own accesses */

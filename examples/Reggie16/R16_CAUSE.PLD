@@ -1,0 +1,137 @@
+Name      R16_CAUSE;
+PartNo    R16-15;
+Date      2026-09-27;
+Revision  B;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Fetch and Control;
+Location  U29;
+Device    g22v10;
+
+/*  Reggie-16 cause port decode, U29 on the Fetch & Control board
+ *  (census R16-15).  Two strobes: /CAUSERD, the
+ *  read-only cause word at 0x3FCC, and /CAPEN, the cause register's
+ *  capture enable.  The port as a whole: Fetch_Control_Module.md,
+ *  "The cause port".
+ *
+ *  THE PORT.  U30 is a '377 cause register, CP = the board's CLK,
+ *  /E = /CAPEN, capturing {TRAPQ, SREQ} (bit 0 TRAP, bit 1 SREQ) once
+ *  per entry.  U31/U32 '541s drive all of D[15:0] under /CAUSERD.
+ *
+ *  WHY A '377 ON CLK.  It captures at the reload edge that CLOSES the
+ *  instruction - the same edge the clock module's T counter samples
+ *  ENTRY on.  SREQ is still valid there: a signal decoded from ST has
+ *  a full T-state of setup, and holds for ST's lag behind the edge
+ *  plus its decoder's delay.  That lag is paper: the T counter clocks
+ *  on CLKGEN beside the export '244, so at datasheet maxima ST trails
+ *  the exported CLK by 14 ns (+116 ns against +102 ns from the
+ *  oscillator) and at typical parts by a few ns (Clock_Module.md
+ *  section 5.1).  INENTRY enters only as an enable qualifier - an ordinary
+ *  level, as clock requirement R3 assumes, never a clock.
+ *    Rejected: clocking the register on INENTRY's rise - that latches
+ *  TRAPQ (a flop, which survives into TI0) but can never capture
+ *  SREQ: SREQ is combinational on ST, and INENTRY's rise is the edge
+ *  that takes ST out of the state SREQ decodes [M8].
+ *    Rejected: a '74 -> '175 swap for a third cause bit - it keeps
+ *  CP = INENTRY and inherits the same failure on its new bit.
+ *
+ *  /CAPEN, the '377's clock enable, does two jobs.
+ *
+ *    1. ONE EDGE PER ENTRY.  ENTRY alone will not do.  For a
+ *       TRAPQ-driven entry ENTRY stays high through TI0 and TI1,
+ *       because ENTRY = PEND # SREQ # TRAPQ and TRAPQ is still set
+ *       there; a bare ENTRY enable would re-clock the register twice
+ *       more.  It would re-latch the same value and so be harmless,
+ *       but harmless-by-luck is not a property worth shipping.
+ *       Qualifying with !INENTRY shuts the window the instant the
+ *       entry begins.
+ *
+ *    2. THE RESET CLEAR the '377 does not have.  A '377 has no clear
+ *       at all.  Instead /CAPEN opens for the whole of reset, so
+ *       every CLK edge while /RSTF is low loads the register from its
+ *       D inputs - and both are guaranteed low there.  TRAPQ is
+ *       cleared by /RSTF, and SREQ needs ST=2 while reset pins the T
+ *       counter at 0 (both measured low across all 27 reset rows of
+ *       the Burn 6 trace).
+ *       The clear is SYNCHRONOUS: it lands on the first CLK edge
+ *       after /RSTF falls.  With the clock running that is invisible.
+ *       With the clock stopped - STEP mode, or a reset asserted while
+ *       halted - the port holds its old value until the first edge,
+ *       so "reads 0x0000 out of reset" holds only once CLK has run.
+ *
+ *    CAPEN  = (ENTRY & !INENTRY) # RST
+ *    /CAPEN = !ENTRY & RST_L  #  INENTRY & RST_L
+ *
+ *  RST_L MUST BE THE ACTIVE-LOW RESET: the F&C's /RSTF (U11.6), never
+ *  its active-high RST.  CAPEN carries # !RST_L, so with the wrong
+ *  sense /CAPEN asserts on every clock outside reset, U30 becomes a
+ *  follower of {TRAPQ, SREQ} instead of a latch, reset stops forcing
+ *  the clear, and the ISR reads 0x0000 at 0x3FCC [M10].
+ *  R16_Fetch_Control.ttlproj and R16_Machine_Seam.ttlproj are both
+ *  wired this way.
+ *
+ *  Pin budget: the DECODER is full at 22 of 22 I/O - twenty inputs,
+ *  two outputs; a further term needs a pin reshuffle or a second
+ *  device.  The REGISTER is not: six D inputs and six Q outputs
+ *  spare.  Bit 2's D is reserved for MMUVIOL, the MMU tier's cause
+ *  bit, with five more spare after it and no part change.
+ *
+ *  Board-side: /CAPEN takes a 10 k pull-up (R5), the /CAUSERD
+ *  precedent (R4), so an unprogrammed or absent GAL leaves the
+ *  register DISABLED - it holds rather than capturing garbage on
+ *  every edge - and the read port off the bus.
+ *
+ *  Note on the clock pin: pin 1 is MEMRD_L, so this device's
+ *  registered outputs would clock on the memory-read strobe.  Both
+ *  outputs are combinational and must stay that way.
+ *
+ *  Term counts: CAUSERD 1, CAPEN 2.
+ *
+ *  Verified in the machine seam (R16_Machine_Seam.ttlproj, pin 21 on
+ *  /RSTF): PASS - 3 of 3 benches ran to completion, 200,704
+ *  assertions, 0 faults (R16_Machine_Qualification.md); in Burn 6 its
+ *  five entries read 0x0001 x4 and 0x0002 at 0x3FCC.
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = MEMRD_L;               /* /MEMRD from R16_SEQ (U17)           */
+PIN  2 = A0;
+PIN  3 = A1;
+PIN  4 = A2;
+PIN  5 = A3;
+PIN  6 = A4;
+PIN  7 = A5;
+PIN  8 = A6;
+PIN  9 = A7;
+PIN 10 = A8;
+PIN 11 = A9;
+PIN 13 = A10;
+
+/* ---- inputs on macrocell pins (used purely as inputs) ---- */
+PIN 14 = A11;
+PIN 15 = A12;
+PIN 16 = A13;
+PIN 17 = A14;
+PIN 18 = A15;
+
+/* ---- entry and reset inputs, also on macrocell pins ---- */
+PIN 19 = ENTRY;                 /* U25 - the entry steer (H18.4 net)   */
+PIN 20 = INENTRY;               /* F&C H18.5 - high through TI0..TI2   */
+PIN 21 = RST_L;                 /* /RSTF (U11.6) - active-low reset    */
+
+/* ---- outputs ---- */
+PIN 22 = !CAPEN;                /* 10 avail, 2 used - U30 '377's /E    */
+PIN 23 = !CAUSERD;              /*  8 avail, 1 used - U31/U32 pin 1    */
+
+/* ================= the window ================= */
+WINDOW = !A15 & !A14 & A13 & A12 & A11 & A10 & A9 & A8 & A7 & A6;
+
+/* ================= outputs ================= */
+/*  Cause port, 0x3FCC exactly, read-only.                             */
+CAUSERD = WINDOW & !A5 & !A4 & A3 & A2 & !A1 & !A0 & !MEMRD_L;
+
+/*  Capture enable: an entry is requested but has not begun, or reset
+ *  is asserted.  Active low at the pin; the '377 captures when low.
+ */
+CAPEN = ENTRY & !INENTRY
+      # !RST_L;

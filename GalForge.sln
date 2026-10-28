@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{420BA810-F9BF-4999-B085-3AD246DCBD83}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GalForge", "src\GalForge\GalForge.csproj", "{9F0E848B-2718-4EA0-82C2-ED122ABCAA2D}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{70949E8C-5733-4428-AE2A-2BD35B131DC2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GalForge.Tests", "tests\GalForge.Tests\GalForge.Tests.csproj", "{EAA543DC-85A3-4939-A560-EAE4B214DD88}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9F0E848B-2718-4EA0-82C2-ED122ABCAA2D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9F0E848B-2718-4EA0-82C2-ED122ABCAA2D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9F0E848B-2718-4EA0-82C2-ED122ABCAA2D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9F0E848B-2718-4EA0-82C2-ED122ABCAA2D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EAA543DC-85A3-4939-A560-EAE4B214DD88}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EAA543DC-85A3-4939-A560-EAE4B214DD88}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EAA543DC-85A3-4939-A560-EAE4B214DD88}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EAA543DC-85A3-4939-A560-EAE4B214DD88}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{9F0E848B-2718-4EA0-82C2-ED122ABCAA2D} = {420BA810-F9BF-4999-B085-3AD246DCBD83}
+		{EAA543DC-85A3-4939-A560-EAE4B214DD88} = {70949E8C-5733-4428-AE2A-2BD35B131DC2}
+	EndGlobalSection
+EndGlobal

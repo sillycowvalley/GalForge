@@ -1,0 +1,104 @@
+Name      MAPDEC_R16;
+PartNo    R16-10;
+Date      2026-10-02;
+Revision  B;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  MMU board (Reggie16_MMU.md);
+Location  U-TBD;
+Device    g22v10;
+
+/*  Reggie-16 MMU board address-space decode: the fixed 16K, its ROM
+ *  window, the I/O window, the control-port strobe and /WAIT.
+ *  Reggie16_MMU.md section 8 is the equation of record; this file is
+ *  its source.  MMUCTL_R16 owns the paged side.
+ *
+ *  Address spaces (A[15:14] = 00 is the fixed, untranslated 16K):
+ *      ROMSPACE  0x0000-0x03FF   1K, per-burn macro (4K: drop !A11
+ *                                and !A10; 8K: drop !A12 too; 16K:
+ *                                drop !A13 as well)
+ *      IOSPACE   0x3FC0-0x3FFF   64 words, the board is silent here
+ *      FIXSPACE  everything else in the fixed 16K - DERIVED, so a
+ *                ROMSPACE edit moves ROM, RAM and /WAIT together
+ *      /CTLWE    0x3FF0-0x3FFF   the control port, low nibble ignored
+ *
+ *  FIXSPACE is written below as a sum of eight products.  Derivation:
+ *  a row is fixed RAM when A13..A10 is neither all zeros (ROM) nor,
+ *  with A9..A6, all ones (the I/O window).  Four terms take a one
+ *  followed by a zero around A13..A10 taken as a ring, which covers
+ *  every row whose A13..A10 is mixed; four more take A10 with each
+ *  zero among A9..A6, which covers the top 1K below the window.  Each
+ *  term holds a one in A13..A10 and a zero in A13..A6, so none admits
+ *  ROM or the window.  GATE: exhaustive 4096-row check of the eight
+ *  terms against the macro definition - 0 mismatches.
+ *  Eight terms fit ANY 22V10 macrocell (the 8-term pins 14/23
+ *  included), so the three FIXSPACE outputs carry no placement
+ *  constraint; they sit on 12/14/16-term pins here for headroom.
+ *
+ *  Inputs: A[15:4] on the twelve dedicated pins; /MEMRD and /MEMWR
+ *  on OLMC pins 14/15 declared as inputs (the ZDET_R16 pattern).
+ *  MEMRD_L / MEMWR_L are the PIN LEVELS of the active-low strobes.
+ *
+ *  Term counts: ROMOE 1, FIXOE 8, FIXWE 8, FIXCS 8, CTLWE 1, WAIT 1.
+ *  Revision B (the 1K ROM): BlinkyJED, checksum B137; fuse-level
+ *  parse-back against the address map over all 16,384 input rows,
+ *  0 mismatches.
+ *  Pin assignment ratified at capture (R16_MMU.ttlproj), unchanged
+ *  from this source.
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = A15;
+PIN  2 = A14;
+PIN  3 = A13;
+PIN  4 = A12;
+PIN  5 = A11;
+PIN  6 = A10;
+PIN  7 = A9;
+PIN  8 = A8;
+PIN  9 = A7;
+PIN 10 = A6;
+PIN 11 = A5;
+PIN 13 = A4;
+
+/* ---- inputs on macrocell pins ---- */
+PIN 14 = MEMRD_L;               /* /MEMRD pin level                    */
+PIN 15 = MEMWR_L;               /* /MEMWR pin level                    */
+
+/* ---- outputs, placed by term count ---- */
+PIN 16 = !FIXOE;                /* 12 avail,  8 used                   */
+PIN 17 = !FIXWE;                /* 14 avail,  8 used                   */
+PIN 18 = !FIXCS;                /* 16 avail,  8 used                   */
+PIN 19 = !ROMOE;                /* 16 avail,  1 used                   */
+PIN 20 = !CTLWE;                /* 14 avail,  1 used                   */
+PIN 21 = !WAIT;                 /* 12 avail,  1 used                   */
+/* pins 22, 23 spare                                                   */
+
+/* ================= strobes as positive nodes ================= */
+MEMRD = !MEMRD_L;
+MEMWR = !MEMWR_L;
+
+/* ================= address spaces ================= */
+FIXED    = !A15 & !A14;                              /* the fixed 16K */
+ROMSPACE = FIXED & !A13 & !A12 & !A11 & !A10;       /* 1K, per burn  */
+
+/*  FIXSPACE = FIXED & !ROMSPACE & !IOSPACE, minimal SOP (8 terms).
+ *  IOSPACE itself has no output and appears only through its
+ *  complement here.                                                   */
+FIXSPACE = FIXED &  A13 & !A12
+         # FIXED &  A12 & !A11
+         # FIXED &  A11 & !A10
+         # FIXED &  A10 & !A13
+         # FIXED &  A10 & !A9
+         # FIXED &  A10 & !A8
+         # FIXED &  A10 & !A7
+         # FIXED &  A10 & !A6;
+
+/* ================= outputs ================= */
+ROMOE = MEMRD & ROMSPACE;
+FIXOE = MEMRD & FIXSPACE;
+FIXWE = MEMWR & FIXSPACE;              /* I/O hole excluded by construction */
+FIXCS = FIXSPACE;
+CTLWE = MEMWR & FIXED & A13 & A12 & A11 & A10 & A9 & A8       /* 0x3FF0 */
+      & A7 & A6 & A5 & A4;
+WAIT  = ROMSPACE;                      /* clock module R7 owns the timing */

@@ -1,0 +1,62 @@
+Name      VSHF_R16;
+PartNo    R16-35;
+Date      2026-10-27;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Video card (Video_Card.md);
+Location  U5;
+Device    g22v10;
+
+/*  Reggie-16 video card, the pixel shifter, clocked on DOTCLK: eight
+ *  registers that load the font ROM's byte when LD is high (dot 1, so
+ *  at dot 1's end) and otherwise shift one place towards S7, a 0 in at
+ *  S0.  The ROM's D7 is a glyph row's leftmost dot, so S7 is PIX, the
+ *  dot on the screen, from dot 2 for eight dots (Video_Card.md,
+ *  Character path).  A GAL does the job of a '166: the dot clock is
+ *  25 MHz, which no '166 in production through-hole meets by datasheet.
+ *
+ *  PIXC, combinational, is PIX XOR CUR: inside the cursor's bar a dot of
+ *  the foreground shows the background and a dot of the background the
+ *  foreground.  It drives the colour selects' S.
+ *
+ *  Term counts: S7-S1 2 each, S0 1, PIXC 2.  Pin 14 spare.
+ */
+
+/* ---- inputs ---- */
+PIN  1 = DOTCLK;                /* the can, 25 MHz                     */
+PIN  2 = FD0;                   /* font ROM D0, the rightmost dot      */
+PIN  3 = FD1;
+PIN  4 = FD2;
+PIN  5 = FD3;
+PIN  6 = FD4;
+PIN  7 = FD5;
+PIN  8 = FD6;
+PIN  9 = FD7;                   /* font ROM D7, the leftmost dot       */
+PIN 10 = LD;                    /* HTIM_R16                            */
+PIN 11 = CUR;                   /* HTIM_R16                            */
+
+/* ---- outputs ---- */
+PIN 23 = S7;                    /*  8 avail, 2 used - PIX, registered  */
+PIN 22 = S6;                    /* 10 avail, 2 used - registered       */
+PIN 21 = S5;                    /* 12 avail, 2 used - registered       */
+PIN 20 = S4;                    /* 14 avail, 2 used - registered       */
+PIN 19 = S3;                    /* 16 avail, 2 used - registered       */
+PIN 18 = S2;                    /* 16 avail, 2 used - registered       */
+PIN 17 = S1;                    /* 14 avail, 2 used - registered       */
+PIN 16 = S0;                    /* 12 avail, 1 used - registered       */
+PIN 15 = PIXC;                  /* 10 avail, 2 used - colour selects S */
+
+/* ================= the shift register ================= */
+S7.d = LD & FD7 # !LD & S6;
+S6.d = LD & FD6 # !LD & S5;
+S5.d = LD & FD5 # !LD & S4;
+S4.d = LD & FD4 # !LD & S3;
+S3.d = LD & FD3 # !LD & S2;
+S2.d = LD & FD2 # !LD & S1;
+S1.d = LD & FD1 # !LD & S0;
+S0.d = LD & FD0;
+
+/* ================= the dot, the cursor's bar inverted ================= */
+PIXC = S7 & !CUR
+     # !S7 & CUR;

@@ -1,0 +1,179 @@
+Name      R16_MISC_V2;
+PartNo    R16-23;
+Date      2026-10-12;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Fetch and Control v2;
+Location  U-MISC;
+Device    g22v10;
+
+/*  Reggie-16 decode on F&C v2: misc decode plus system control.
+ *  MARPH, the interrupt strobes IESET, IECLR and FSWAP, and the
+ *  entry-steer request SREQ.  There is no I/O strobe anywhere in the
+ *  CPU - I/O is memory-mapped (ISA section 7).  v1's R16_MISC (R16-05
+ *  rev F) with one change, every other row as v1's:
+ *
+ *  THE STORES WITH DISPLACEMENT (Reggie16_Proposed_v2.md section 10,
+ *  ISA section 6.5).  MARPH takes the store's T2, where D carries
+ *  base + imm5: ST [r13+imm5],rb (0x1A00-0x1BFF, [12:9] = 1101) in
+ *  both modes, ST [r11+imm5],rb (0x1600-0x17FF, [12:9] = 1011) with IE
+ *  set.  This device has no free pin for R16_STD's STD, so it decodes
+ *  the two blocks from its own inputs, which hold IR12-IR9 and IE.
+ *  The strobes are untouched: the r13 store has IR10 clear, outside
+ *  EI, DI, SWF and SYS, and the r11 store is the DI word with IE set,
+ *  where the !IE fence already holds IECLR dead.  A kernel DI clears
+ *  IE as on v1.
+ *
+ *  PROTECTED TIER (Reggie16_Interrupt_Architecture.md section 8):
+ *  pin 16 takes IE (the IE flop's Q - the stability contract is
+ *  interrupt doc section 8.4: IE moves only in states that assert no
+ *  strobe fenced by it), pin 18 emits SREQ, and pin 23 takes IR11.
+ *  /SOE and /IMMOE live on R16_IMM_V2, which leaves those pins free.
+ *
+ *  SYSTEM OPS: the shape-00 system group is IR12 & IR10, with
+ *  IR11/IR9 selecting - 00 EI, 01 DI, 10 SWF, 11 SYS (ISA section
+ *  6.1; SYS carries its call number at [8:0], read by the kernel
+ *  from mem[r12-1]).  The !IR11 literals on EI/DI keep the SWF/SYS
+ *  half of the group from aliasing onto them: a part burned without
+ *  them executes SWF/SYS words as EI/DI, and nothing using SWF or
+ *  SYS may run on such silicon.  RTI is shape-10 sub 01001 - its
+ *  datapath is plain MOV, decoded on SEQ/EXEC; only the strobes live
+ *  here.
+ *
+ *  THE !IE FENCES make the U-mode system ops (IE set) dead strobes:
+ *  DI/SWF become silent NOPs - the reserved-sub NOP's precedent.
+ *  U-mode EI is trapped before that matters: its rd field is 1010,
+ *  so the board's r10 compare (KVIOL) fences it as an r10 write.
+ *  A U-mode RTI instead raises SREQ, exactly at its own boundary:
+ *  the kernel validates that mem[r12-1] is a SYS encoding and treats
+ *  anything else as a violation (unspoofable - the word at r12-1 is
+ *  the instruction that actually executed).  SREQ's IE literal also
+ *  makes kernel-mode SYS inert - no re-entry into the non-reentrant
+ *  ISR.  The strobes' consumers are board flip-flops:
+ *    IE (F&C U22 half A) clocks on gated CLK, with IESET/IECLR as
+ *    its synchronous set/clear, so IE commits only at state-ending
+ *    rises.  The two-FF /IRQ synchroniser (U21) is the F&C's only
+ *    free-running-OSC consumer.
+ *    FBSEL (shadow-flag-bank select, on the Flag Unit) clocks on
+ *    CPBUFF's rise, the Flag Unit's buffered CLK - the bank changes
+ *    ONLY at state-ending rises.  FSWAP's RTI product carries !IE;
+ *    the Flag Unit samples FSWAP as FSWAPH on CPBUFF's fall and
+ *    toggles FBSEL on FSWAPH, so IE's commit cannot cut it short.
+ *    FBSEL's select mux sits in the CLAT->CFLG feedback path:
+ *    sequencing section 7.4 is the timing contract, and the '157
+ *    delay is a named line in the ALU16 carry budget.
+ *
+ *  TI0 (ST = 101) is reached only by the clock module's steered
+ *  reload; the exact 3-literal decode is deliberate.
+ *
+ *  Note MARPH is only half the MAR enable: the board gates it with the
+ *  CLKSEL strap (MAR LE = MARPH & CLK or MARPH & !CLK - capture at the
+ *  fall or the rise, selected by J1).  MARSRC (AQ at T0, D otherwise)
+ *  is a NOR of ST[2:0] on the board, not a term here.
+ *
+ *  Term counts: MARPH 6, IECLR 3, FSWAP 3, IESET 2, SREQ 2.
+ *
+ *  Swept at every input against v1's map, and with the set against
+ *  v1's over every word, mode and state (Reggie16_PLD_Notes.md
+ *  section 9).
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = IR15;
+PIN  2 = IR14;
+PIN  3 = IR13;
+PIN  4 = IR12;
+PIN  5 = IR4;
+PIN  6 = IR3;
+PIN  7 = IR2;
+PIN  8 = IR1;
+PIN  9 = IR0;
+PIN 10 = ST2;
+PIN 11 = ST1;
+PIN 13 = ST0;
+
+/* ---- inputs on macrocell pins ---- */
+PIN 14 = RST;
+PIN 15 = IR10;
+PIN 16 = IE;                    /* IE flop Q - see header              */
+PIN 19 = IR9;
+PIN 23 = IR11;                  /* un-aliases the system group         */
+
+/* ---- outputs, placed by term count ---- */
+PIN 17 = MARPH;                 /* MAR address state, active high      */
+PIN 18 = SREQ;                  /* entry steer: SYS, or U-mode RTI     */
+PIN 20 = IESET;                 /* IE flop synchronous set             */
+PIN 21 = IECLR;                 /* IE flop synchronous clear           */
+PIN 22 = FSWAP;                 /* FBSEL toggle enable                 */
+
+/*  No spare macrocells: five inputs, five outputs.  /SOE and /IMMOE
+ *  live on R16_IMM_V2.                                                */
+
+/* ================= T-states ================= */
+T0  = !ST2 & !ST1 & !ST0;
+T2  = !ST2 &  ST1 & !ST0;
+TI0 =  ST2 & !ST1 &  ST0;                           /* entry state 101 */
+
+/* ================= class and shape ================= */
+/*  No C1 node: nothing here consumes it, and an unreferenced node is
+ *  a BlinkyJED hard error.                                            */
+SH00 = !IR15 & !IR14 & !IR13;
+SH10 = !IR15 &  IR14 & !IR13;
+LDSH = !IR15 &  IR14 &  IR13;
+
+STI  = SH10 & !IR4 & !IR3 &  IR2 & !IR1 & !IR0;
+UPD  = SH10 & !IR4 &  IR3 &  IR2;                   /* 011xx           */
+/*  No BCC/LDI/ADJ nodes: their consumer /IMMOE lives on R16_IMM_V2,
+ *  and an unreferenced node is a BlinkyJED hard error.                */
+
+EI   = SH00 & IR12 & !IR11 & IR10 & !IR9;           /* system group -  */
+DI   = SH00 & IR12 & !IR11 & IR10 &  IR9;           /*   see header    */
+SWF  = SH00 & IR12 &  IR11 & IR10 & !IR9;
+SYS  = SH00 & IR12 &  IR11 & IR10 &  IR9;
+RTI  = SH10 & !IR4 &  IR3 & !IR2 & !IR1 & IR0;      /* 01001           */
+
+/*  The stores with displacement, as R16_STD's STD.                    */
+STR13 = SH00 & IR12 &  IR11 & !IR10 & IR9;          /* both modes      */
+STR11 = SH00 & IR12 & !IR11 &  IR10 & IR9 & IE;     /* user mode       */
+
+/* ================= MAR =================
+ * T0 captures the PC (from AQ, via MARSRC).  T2 captures the effective
+ * address for LD, ST, both stores with displacement and all four
+ * update forms (from D).  No address state carries a write to the
+ * register the address depends on, and the A latch (LEA = CLK) makes
+ * the r15 overlap at T0 structural.
+ */
+MARPH = !RST & ( T0
+               # T2 & LDSH
+               # T2 & STI
+               # T2 & UPD
+               # T2 & STR13
+               # T2 & STR11 );
+
+/* ================= interrupt strobes =================
+ * The !IE literals are the U-mode fences - dead strobes, silent
+ * NOPs.  The IR11 literal splits the system group so EI/DI
+ * (IR11=0) and SWF/SYS (IR11=1) never alias.
+ */
+IESET = !RST & T2 & EI  & !IE
+      # !RST & T2 & RTI & !IE;
+
+IECLR = RST                                         /* mask at reset   */
+      # TI0                                         /* mask at entry   */
+      # T2 & DI & !IE;
+
+FSWAP = !RST & TI0                                  /* swap at entry   */
+      # !RST & T2 & RTI & !IE                       /* swap back       */
+      # !RST & T2 & SWF & !IE;                      /* kernel flag     */
+                                                    /*   window (int.  */
+                                                    /*   doc 5.1)      */
+
+/* ================= entry steer request =================
+ * Live at its own T2's ending edge - the reload that takes it - so
+ * both entries are exact, no skid.  IE gates both ways: kernel SYS
+ * is inert, kernel RTI is dispatch, U-mode RTI is a violation the
+ * kernel identifies by the non-SYS word at mem[r12-1].
+ */
+SREQ = !RST & T2 & SYS & IE
+     # !RST & T2 & RTI & IE;

@@ -1,0 +1,99 @@
+Name      BBUS_R16;
+PartNo    R16-07;
+Date      2026-08-11;
+Revision  B;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  B-Bus Unit;
+Location  U6;
+Device    g22v10;
+
+/*  Reggie-16 immediate assembly - the B-Bus Unit's one GAL.
+ *
+ *  SELF-CONTAINED: this device decodes the immediate form directly
+ *  from IR[15:12]; no form-select control line reaches this board.
+ *  The mux settings are pure functions of the opcode; the '541
+ *  enables (/IMMOE, /IMMHOE) own all timing, so no T-state reaches
+ *  this board.  Cost: the IR drop carries four more bits.  Gain: no
+ *  GAL stage upstream in the immediate settle path, no cross-device
+ *  decode dependency, and the board self-tests with nothing but IR
+ *  patterns and enables.
+ *  Rejected: form-select control lines (IMMSEL[1:0], SIGNSEL) decoded
+ *  upstream - one more GAL stage in the immediate settle path and a
+ *  cross-device decode dependency.
+ *
+ *  Produces the four muxed immediate bits IMM[7:4] (into U3, the
+ *  B[7:0] driver) and the extension bit EXT (replicated across
+ *  B[15:8] by U4).  B[3:0] is IR[3:0] in every form and never passes
+ *  through this device; the LDH high-byte path (U5) is plain wiring
+ *  and never passes through it either - under LDH all four form
+ *  nodes are false and the outputs rest at 0, harmlessly (U3/U4 are
+ *  disabled).
+ *
+ *  Forms:  imm8 = IR[8:5]:IR[3:0]  (LDI, ADJ - and LDH via U5)
+ *          imm5 = IR[4:0]          (LD)  - zero extended
+ *          imm9 = IR[8:0]          (Bcc) - sign extended
+ *
+ *  EXT = (ADJ # BCC) & IR8 serves three roles at once: imm8's sign
+ *  (i7 = IR8, ADJ), imm9's sign AND its bit 8 (i8 = IR8, Bcc), and
+ *  zero for the zero-extended forms.  The collapse works because
+ *  every form's top payload bit is IR8 - an encoding property.  If
+ *  the ISA ever moves an immediate's top bit, this equation is the
+ *  casualty.
+ *
+ *  Term counts:  IMM4 4, IMM5 3, IMM6 3, IMM7 3, EXT 2.
+ */
+
+/* ---- inputs ---- */
+PIN  1 = IR15;
+PIN  2 = IR14;
+PIN  3 = IR13;
+PIN  4 = IR12;
+PIN  5 = IR8;
+PIN  6 = IR7;
+PIN  7 = IR6;
+PIN  8 = IR5;
+PIN  9 = IR4;
+
+/* ---- outputs ---- */
+/*  Pins 14, 17, 21-23 spare.                                          */
+PIN 18 = IMM7;                  /* 16 avail, 3 used                    */
+PIN 19 = IMM6;                  /* 16 avail, 3 used                    */
+PIN 20 = IMM5;                  /* 14 avail, 3 used                    */
+PIN 15 = IMM4;                  /* 10 avail, 4 used                    */
+PIN 16 = EXT;                   /* 12 avail, 2 used                    */
+
+/* ================= form decode =================
+ * Only the forms /IMMOE actually gates matter; everything else is
+ * don't-care with the drivers off.
+ */
+LDI = IR15 &  IR14 &  IR13 & IR4;                   /* class 1, 111.1  */
+ADJ = !IR15 &  IR14 & !IR13 & IR4;                  /* shape 10, IR4   */
+LD  = !IR15 &  IR14 &  IR13;                        /* shape 11        */
+BCC = !IR15 & !IR14 & !IR13 & !IR12;                /* shape 00 sub 0  */
+
+/* ================= extension bit ================= */
+EXT = ADJ & IR8
+    # BCC & IR8;
+
+/* ================= muxed immediate bits =================
+ * imm8's field is split (i7..i4 at IR[8:5]), so bits 7:4 shift by one
+ * position between imm8 and imm9; imm5 contributes only bit 4 and
+ * zero above it.
+ */
+IMM4 = LDI & IR5
+     # ADJ & IR5
+     # LD  & IR4
+     # BCC & IR4;
+
+IMM5 = LDI & IR6
+     # ADJ & IR6
+     # BCC & IR5;
+
+IMM6 = LDI & IR7
+     # ADJ & IR7
+     # BCC & IR6;
+
+IMM7 = LDI & IR8
+     # ADJ & IR8
+     # BCC & IR7;

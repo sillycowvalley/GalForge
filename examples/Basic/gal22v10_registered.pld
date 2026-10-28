@@ -1,0 +1,62 @@
+Name      gal22v10_registered ;
+PartNo    TTLSIM22R ;
+Date      07/02/2026 ;
+Revision  01 ;
+Designer  TTLSim ;
+Company   TTLSim ;
+Assembly  None ;
+Location  ;
+Device    g22v10 ;
+
+/*
+ * GAL22V10 geometry-validation design (registered).
+ *
+ * A 3-bit enabled counter plus trimmings, chosen to exercise every
+ * registered-mode mechanism:
+ *   - q0..q2 registered on pins 23/22/21 (S1 registered, S0 active high).
+ *   - qb0 registered active-low on pin 20 (registered + S0 polarity).
+ *   - AR product term driven by rst (asynchronous, level-sensitive).
+ *   - SP product term driven by pre (synchronous, at the clock edge).
+ *   - Register feedback (/Q columns) used in the .d equations.
+ *   - carry on pin 14: a combinational cell reading registered-cell
+ *     feedback, at the far end of the array.
+ *
+ * Expected behaviour:
+ *   - While rst is high: q2..q0 = 000 immediately (async), carry low.
+ *   - On a rising clock edge with pre high: q2..q0 = 111 (sync preset),
+ *     carry high. Preset also sets qb0's register, so pin 20 = low.
+ *   - Otherwise, on each rising edge: count q2..q0 by +1 when en is high,
+ *     hold when en is low.
+ *   - qb0 latches q0 each edge; pin 20 shows its complement (active low),
+ *     i.e. pin 20 = NOT(q0 delayed one clock).
+ *   - carry = q0 AND q1 AND q2, combinational, never Hi-Z.
+ */
+
+PIN 1  = clk ;
+PIN 2  = rst ;   /* -> AR term */
+PIN 3  = pre ;   /* -> SP term */
+PIN 4  = en ;
+
+PIN 23 = q0 ;
+PIN 22 = q1 ;
+PIN 21 = q2 ;
+PIN 20 = !qb0 ;   /* registered, active low */
+PIN 14 = carry ;  /* combinational decode of register state */
+
+q0.d  = q0 $ en ;
+q1.d  = q1 $ (q0 & en) ;
+q2.d  = q2 $ (q1 & q0 & en) ;
+
+qb0.d = q0 ;
+
+q0.ar  = rst ;
+q1.ar  = rst ;
+q2.ar  = rst ;
+qb0.ar = rst ;
+
+q0.sp  = pre ;
+q1.sp  = pre ;
+q2.sp  = pre ;
+qb0.sp = pre ;
+
+carry = q0 & q1 & q2 ;

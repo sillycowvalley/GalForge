@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <AssemblyName>galforge</AssemblyName>
+        <RootNamespace>GalForge</RootNamespace>
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <Version>1.0.0</Version>
+        <Product>GalForge</Product>
+        <Description>CUPL-subset logic compiler for GAL16V8, GAL20V8 and GAL22V10.</Description>
+        <Copyright>Copyright (c) 2026 sillycowvalley</Copyright>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="GalForge.Tests" />
+    </ItemGroup>
+
+</Project>

@@ -1,0 +1,114 @@
+Name      FLAGS_R16;
+PartNo    R16-27;
+Date      2026-10-12;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Flag Unit v2 (Flag_Unit_v2_Module.md);
+Location  U1;
+Device    g22v10;
+
+/*  Reggie-16 Flag Unit v2: both flag banks, restored by copy, in one
+ *  Lattice GAL22V10 (Atmel GALs stay off the datapath, and this one is
+ *  on the CF feedback path).  Clocked on pin 1 by the board's CLK leg,
+ *  unbuffered: a receiver's delay would come off the capture enables'
+ *  hold.
+ *
+ *  CF, ZF, NF and VF are the live bank's registers, and the pins the
+ *  F&C's R16_COND and the ALU16's ALU_R16 read.  CFS, ZFS, NFS and VFS
+ *  hold the frozen bank.  At a rise with FSWAPH set (FSWAP held from
+ *  CLK's fall by U2, a '74, since this part clocks only on the rise)
+ *  the two banks exchange.  /FLGC loads C and /FLGNZ loads Z, N and V,
+ *  each from the ALU16's raw conditions on H4; with neither, every
+ *  register holds.  A capture in a state that swaps lands in the bank
+ *  that leaves, as on v1, where the steered enables still select it at
+ *  that rise: no state asks for both (Reggie16_Datapath_Sequencing.md
+ *  section 7.4 rule 4), but the function is v1's at every input.
+ *
+ *  Software sees v1's select-restore: SWF, TI0 and RTI swap, and the
+ *  frozen bank is reached only through a swap.  There is no bank
+ *  select, so no reset: the flags have no reset value on v1 either.
+ *
+ *  CF's polarity is a contract (ALU16_Module.md section 2.5): the bit
+ *  stored is COUT's pin level, a carry stored as 0, and nothing here
+ *  inverts it.  C's source is COUT, or F0 under /SOE (the shifted-out
+ *  bit), as the ALU16's U20 and v1's Flag Unit U7 choose it.
+ *
+ *  SRIN, SHR's fill: 00 zero, 01 BF15 (the raw source sign), 10 CF,
+ *  the live bank's carry; 11 zero.  SRSEL0 is the low bit.  BF15, never
+ *  NSRC, as v1's U8: NSRC here would loop SRIN through its own capture.
+ *
+ *  Every pin of the 22V10 is used: pin 23, whose macrocell has no
+ *  equation, is BF15's input, and the fuse map leaves its output
+ *  enable never true.  AR and SP are unused.  Term counts: CF and CFS
+ *  4 each, ZF NF VF ZFS NFS VFS 3 each, SRIN 2.
+ */
+
+/* ---- clock + inputs, dedicated ---- */
+PIN  1 = CLK;                   /* H6.2, the Flag leg, unbuffered      */
+PIN  2 = !FLGC;                 /* H2.2, R16_COND: load C              */
+PIN  3 = !FLGNZ;                /* H2.3, R16_COND: load Z, N and V     */
+PIN  4 = COUT;                  /* H4.2, raw '181 LS level             */
+PIN  5 = F0;                    /* H4.5, raw '181 LS level             */
+PIN  6 = !SOE;                  /* H5.5, shift output enable           */
+PIN  7 = ZERO;                  /* H4.3, ZDET_R16                      */
+PIN  8 = NSRC;                  /* H4.7, ZDET_R16: N's source          */
+PIN  9 = V;                     /* H4.6, CARRY_R16                     */
+PIN 10 = FSWAPH;                /* U2 half B Q: FSWAP at CLK's fall    */
+PIN 11 = SRSEL0;                /* H5.3                                */
+PIN 13 = SRSEL1;                /* H5.4                                */
+
+/* ---- I/O pin as an input ---- */
+PIN 23 = BF15;                  /* H4.4, ZDET_R16: the raw source sign */
+
+/* ---- outputs ---- */
+PIN 14 = SRIN;                  /* combinational - H5.7                */
+PIN 15 = CF;                    /* registered - H2.4, H2.8, H3.8       */
+PIN 16 = ZF;                    /* registered - H2.5                   */
+PIN 17 = NF;                    /* registered - H2.6                   */
+PIN 18 = VF;                    /* registered - H2.7                   */
+PIN 19 = CFS;                   /* registered - probe                  */
+PIN 20 = ZFS;                   /* registered - probe                  */
+PIN 21 = NFS;                   /* registered - probe                  */
+PIN 22 = VFS;                   /* registered - probe                  */
+
+/* ================= the live bank ================= */
+CF.d = FSWAPH & CFS
+     # !FSWAPH & FLGC & !SOE & COUT
+     # !FSWAPH & FLGC & SOE & F0
+     # !FSWAPH & !FLGC & CF;
+
+ZF.d = FSWAPH & ZFS
+     # !FSWAPH & FLGNZ & ZERO
+     # !FSWAPH & !FLGNZ & ZF;
+
+NF.d = FSWAPH & NFS
+     # !FSWAPH & FLGNZ & NSRC
+     # !FSWAPH & !FLGNZ & NF;
+
+VF.d = FSWAPH & VFS
+     # !FSWAPH & FLGNZ & V
+     # !FSWAPH & !FLGNZ & VF;
+
+/* ================= the frozen bank ================= */
+/*  At a swap it takes the live bank, with that state's capture in it.  */
+CFS.d = FSWAPH & FLGC & !SOE & COUT
+      # FSWAPH & FLGC & SOE & F0
+      # FSWAPH & !FLGC & CF
+      # !FSWAPH & CFS;
+
+ZFS.d = FSWAPH & FLGNZ & ZERO
+      # FSWAPH & !FLGNZ & ZF
+      # !FSWAPH & ZFS;
+
+NFS.d = FSWAPH & FLGNZ & NSRC
+      # FSWAPH & !FLGNZ & NF
+      # !FSWAPH & NFS;
+
+VFS.d = FSWAPH & FLGNZ & V
+      # FSWAPH & !FLGNZ & VF
+      # !FSWAPH & VFS;
+
+/* ================= SHR's fill ================= */
+SRIN = !SRSEL1 & SRSEL0 & BF15
+     # SRSEL1 & !SRSEL0 & CF;

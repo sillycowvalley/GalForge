@@ -1,0 +1,136 @@
+Name      CLKSHAPE_R16;
+PartNo    R16-16;
+Date      2026-09-24;
+Revision  B;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Clock module (Clock_Module.md);
+Location  U-TBD;
+Device    g22v10;
+
+/*  Clock module divider, duty shaper and halt clock gate: one GAL
+ *  is the divider chain and holds the gate's latch.
+ *  Clock_Module.md section 2 owns the design; this file is its source.
+ *
+ *  MIXED MODE - Q0-Q3 and SHP are registered (.d, clocked on pin 1 by
+ *  the conditioned can, CANCLK); CLKEN is combinational with pin
+ *  feedback.  BlinkyJED support for a per-OLMC registered /
+ *  combinational mix on the 22V10 is this file's compile gate.
+ *
+ *  Q0-Q3: a free-running 4-bit synchronous frame counter.  The bits
+ *  themselves are the legacy taps - can /2 /4 /8 /16 at exactly 50%
+ *  duty - onto '151 D2-D5.
+ *
+ *  SHP: the shaped machine-clock tap, can /8, onto '151 D6 - high
+ *  while (count mod 8) < THR, REGISTERED, so it is glitch-free by
+ *  construction and edge-aligned with the taps.  One duty step = one
+ *  can period; exactly one falling edge per 8-can frame (the mux and
+ *  step machinery see an ordinary tap).  Being retimed it is
+ *  pipeline-shifted ONE CAN PERIOD against the raw counter bits -
+ *  by design, do not misread the T4-vs-D4 cross-check as a fault.
+ *
+ *  THR0-THR2 are the SHAPE DIP threshold bits (panel legend "T");
+ *  named THR here so no source or capture net collides with the
+ *  T-state names.  THR = 0 parks SHP constantly low - all-open is
+ *  safe on the SHAPE bank too.  THR = 2 is the operating 25/75.
+ *
+ *  NO AR/SP TERMS, deliberately: the counter is cyclic and
+ *  self-starting from any power-up value, SHP re-registers within
+ *  one can period, and the oscillator path must free-run through
+ *  reset (Clock_Module.md section 8).  Nothing on this device sees
+ *  RST.
+ *
+ *  CLKEN: the glitch-free halt gate for U17 (CLK = CLKRAW & CLKEN).
+ *  A transparent-low D latch: it follows RUN = !HALT & !HALTG while
+ *  CLKRAW (the ungated clock, U12 pin 8) is low and holds while
+ *  CLKRAW is high.  So the gate only ever changes in the low phase:
+ *    - HALT set in the low phase (the HLT instruction - /HALTREQ
+ *      arrives just after CLK falls) closes the gate at once, and the
+ *      machine freezes inside HLT;
+ *    - HALT set in the high phase (the panel HALT button, truly
+ *      asynchronous) cannot cut the pulse short - the gate closes as
+ *      CLKRAW falls;
+ *    - release waits for HALTG (U24 half B, retimed on /OSC) and
+ *      then opens in the low phase - no runt.
+ *  The third product term is the consensus term that makes the latch
+ *  hazard-free when CLKRAW changes with RUN steady.  Power-up value
+ *  is irrelevant: the latch loads within one CLKRAW low phase.
+ *  Window: a request arriving within one GAL tpd of CLKRAW rising can
+ *  still clip that pulse - the unavoidable async window of any gate.
+ *
+ *  FRSEL is declared and WIRED (SHAPE bank pos 4, pulled down) but
+ *  unused: the future /16 frame (6.25% steps) is a re-burn
+ *  only - Q3 and macrocell headroom for the wider compare are
+ *  already in-device; SHP sits on a 16-term OLMC for that reason.
+ *
+ *  GATE: mechanically generated (truth table -> QMC -> emit ->
+ *  parse-back).  Exhaustive sweeps of the emitted equations - all
+ *  16 counter states x next-state (64 bit-assertions) and all 128
+ *  SHP.d rows (Q3 swept as a don't-affect) - 0 mismatches; registered walk, 8 thresholds x 32 can
+ *  cycles: duty exactly THR/8 per frame, one rising and one falling
+ *  edge per frame (none at THR = 0), self-start verified from all 32
+ *  power-up states.  BlinkyJED compile and parse-back is the
+ *  ratifying gate; its output is the artefact of record
+ *  (Output/CLKSHAPE_R16.jed, embedded in R16_Clock.ttlproj as U19).
+ *  Pin assignment matches R16_Clock.ttlproj.
+ *
+ *  Term counts: Q0 1, Q1 2, Q2 3, Q3 4, SHP 11, CLKEN 3.
+ */
+
+/* ---- clock + inputs, dedicated ---- */
+PIN  1 = CANCLK;                /* conditioned can - registered clock  */
+PIN  2 = THR0;                  /* SHAPE DIP 1                         */
+PIN  3 = THR1;                  /* SHAPE DIP 2                         */
+PIN  4 = THR2;                  /* SHAPE DIP 3                         */
+PIN  5 = FRSEL;                 /* SHAPE DIP 4 - reserved, unused      */
+PIN  6 = HALT;                  /* U15 pin 5, halt flop Q              */
+PIN  7 = HALTG;                 /* U24 pin 9, HALT retimed on /OSC     */
+PIN  8 = CLKRAW;                /* U12 pin 8, ungated machine clock    */
+
+/* ---- outputs ---- */
+/*  Pin 18 spare OLMC (16 terms), pins 20-22 spare (14/12/10) - the
+ *  module's full-size spare among them.  Inputs 9-11 and 13 spare.   */
+PIN 14 = Q0;                    /*  8 avail,  1 used - '151 D2 (/2)    */
+PIN 15 = Q1;                    /* 10 avail,  2 used - '151 D3 (/4)    */
+PIN 16 = Q2;                    /* 12 avail,  3 used - '151 D4 (/8)    */
+PIN 17 = Q3;                    /* 14 avail,  4 used - '151 D5 (/16)   */
+PIN 19 = SHP;                   /* 16 avail, 11 used - '151 D6 (shaped) */
+PIN 23 = CLKEN;                 /*  8 avail,  3 used - U17 pin 10, COMB */
+
+/* ================= frame counter ================= */
+Q0.d = !Q0;
+
+Q1.d = !Q1 & Q0
+      # Q1 & !Q0;
+
+Q2.d = !Q2 & Q1 & Q0
+      # Q2 & !Q1
+      # Q2 & !Q0;
+
+Q3.d = !Q3 & Q2 & Q1 & Q0
+      # Q3 & !Q2
+      # Q3 & !Q1
+      # Q3 & !Q0;
+
+/* ================= shaped tap ================= */
+/*  SHP.d over the CURRENT count c: high when ((c+1) mod 8) < THR,
+ *  so the registered output is high exactly while the displayed
+ *  count is 0..THR-1.                                                */
+SHP.d = !Q2 & !Q1 & !Q0 & THR1
+      # !Q2 & !Q1 & THR1 & THR0
+      # !Q2 & !Q1 & THR2
+      # !Q2 & !Q0 & THR2
+      # !Q1 & !Q0 & THR2 & THR1
+      # Q2 & Q1 & Q0 & THR0
+      # Q2 & Q1 & Q0 & THR1
+      # Q2 & Q1 & Q0 & THR2
+      # Q0 & THR2 & THR1 & THR0
+      # Q1 & Q0 & THR2 & THR1
+      # !Q2 & THR2 & THR0;
+
+/* ================= halt clock gate ================= */
+/*  Transparent-low latch on RUN = !HALT & !HALTG, enable = !CLKRAW.
+ *  Combinational (no .d): CLKEN feeds back from its own pin.         */
+CLKEN = !CLKRAW & !HALT & !HALTG
+      #  CLKRAW & CLKEN
+      # !HALT & !HALTG & CLKEN;

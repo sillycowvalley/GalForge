@@ -1,0 +1,79 @@
+Name      IRQGLU_R16;
+PartNo    R16-14;
+Date      2026-09-17;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Peripheral board (Peripheral_Board.md);
+Location  U15;
+Device    g16v8;
+
+/*  Reggie-16 peripheral board, /IRQ wire-OR stage, built from stock.
+ *  GAL16V8D-15 is the surplus tier; interrupt glue is dead-slow logic.
+ *  Rejected: an open-collector '05/'03/'06 - none in any drawer.
+ *  Rejected: HC126 - the receiver rule requires TTL thresholds (16550
+ *  INTR and CF INTRQ are TTL-level drivers).
+ *
+ *  OPEN-DRAIN FROM A PUSH-PULL PART: each output is value-0 with
+ *  OE = its source, so it pulls /IRQ low while the source is high
+ *  and releases otherwise.  An OE is a SINGLE product term on this
+ *  device - one output cannot OR three sources - so each source
+ *  owns an output and PINS 17/18/19 ARE PARALLELED ONTO /IRQ IN
+ *  COPPER.  All three only ever drive low; they can never fight.
+ *  The board never drives /IRQ high - the pull-up lives on the F&C.
+ *
+ *  Masking is physical, not fused: J3/J4/J5 (TICK/UART/CF) sit in
+ *  series with the inputs, J3 and J4 closed for Ken and all three
+ *  open under the monitor alone (Peripheral_Board.md); R5-R7 pull
+ *  masked inputs low.  Source-side masking also exists where silicon
+ *  provides it (16550 IER, CF nIEN) - TICKPEND has none, which is
+ *  why the jumpers exist: the 100 Hz heartbeat is wired in one
+ *  shunt when the kernel wants it.
+ *
+ *  Draft check: three independent single-term enables, verified by
+ *  inspection against the 8-row table per output.  BlinkyJED
+ *  compile and parse-back is the ratifying gate; it accepts g16v8
+ *  and .oe in complex mode.  Dialect: constant
+ *  outputs are GND/VCC keywords, never number literals.  Pin
+ *  assignment matches
+ *  R16_Peripheral.ttlproj.
+ */
+
+/* ---- inputs ---- */
+/*  Pins 1, 6-9, 11 unused inputs, tied to GND in the capture,
+ *  along with macrocell pins 12/13/14 (input-configured spares).
+ *  Pin 5 is also tied to GND, but named: the dialect bars GND/VCC
+ *  on .oe equations, so TIED0 is how "never enabled" is written -
+ *  an OE slaved to an input the board holds low.                    */
+PIN  5 = TIED0;                 /* grounded on the board             */
+PIN  2 = TICKPEND;              /* '74 1Q via J3, R5 pulldown        */
+PIN  3 = UARTINT;               /* 16550 INTR (30) via J4, R6        */
+PIN  4 = CFINT;                 /* IDE INTRQ (31) via J5, R7         */
+
+/* ---- unused macrocells, pinned down ---- */
+/*  12/13/14 compile as inputs - tied to GND in the capture.
+ *  15/16 compile as outputs - declared here and held released
+ *  (OE = TIED0, a board-grounded input) so they never drive;
+ *  left unconnected on the board.                                   */
+PIN 15 = SPARE0;
+PIN 16 = SPARE1;
+
+/* ---- outputs: value 0, enabled = pull /IRQ low ---- */
+PIN 19 = IRQT;                  /* tick leg   - 1 OE term            */
+PIN 18 = IRQU;                  /* UART leg   - 1 OE term            */
+PIN 17 = IRQC;                  /* CF leg     - 1 OE term            */
+
+IRQT    = GND;
+IRQT.oe = TICKPEND;
+
+IRQU    = GND;
+IRQU.oe = UARTINT;
+
+IRQC    = GND;
+IRQC.oe = CFINT;
+
+SPARE0    = GND;
+SPARE0.oe = TIED0;
+
+SPARE1    = GND;
+SPARE1.oe = TIED0;

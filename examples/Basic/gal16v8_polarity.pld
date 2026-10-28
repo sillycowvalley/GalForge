@@ -1,0 +1,33 @@
+Name      gal16v8_polarity ;
+PartNo    TTLSIM16P ;
+Date      07/02/2026 ;
+Revision  01 ;
+Designer  TTLSim ;
+Company   TTLSim ;
+Assembly  None ;
+Location  ;
+Device    g16v8as ;
+
+/*
+ * Output-polarity validation (simple mode). Four outputs share the identical
+ * array term (a & b) and differ ONLY in polarity notation, so the WinCUPL
+ * gold isolates the XOR fuse rule:
+ *   yhi  : plain declaration, plain equation      -> active high (XOR = 1)
+ *   ylo  : !pin declaration,  plain equation      -> active low  (XOR = 0)
+ *   yinv : plain declaration, !target equation    -> active low  (XOR = 0)
+ *   ydbl : !pin declaration,  !target equation    -> the two cancel: active
+ *          high (XOR = 1), proving polarity is the XOR of both notations
+ */
+
+PIN 2  = a ;
+PIN 3  = b ;
+
+PIN 19 = yhi ;
+PIN 18 = !ylo ;
+PIN 17 = yinv ;
+PIN 16 = !ydbl ;
+
+yhi   = a & b ;
+ylo   = a & b ;
+!yinv = a & b ;
+!ydbl = a & b ;

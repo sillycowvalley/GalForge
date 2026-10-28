@@ -1,0 +1,111 @@
+Name      CARRY_R16;
+PartNo    R16-08;
+Date      2026-08-15;
+Revision  D;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  ALU16 (single-board 16-bit ALU);
+Location  U5;
+Device    g22v10;
+
+/*  Reggie-16 carry lookahead - in place of a '182 (sequencing
+ *  section 1) - plus the signed-overflow network.
+ *
+ *  PIN IDENTITY, measured.  The CR "'181 Pin 15/17 Polarity and Role"
+ *  (2026-08-01) and the exhaustive LS181_truth_16384.csv sweep give
+ *  the pin behaviour in the active-high data convention:
+ *
+ *      pin 17 = T      = carry-out at carry-in 1        - asserts HIGH
+ *      pin 15 = someG  = OR over bits of Ai.(S3.Bi + S2./Bi)
+ *                        ("some bit generates")         - asserts HIGH
+ *
+ *  and the true-carry identity (exact, all 8,192 vectors, and proven
+ *  algebraically):
+ *
+ *      ct_out == pin17 & (pin15 # ct_in)        [true carries]
+ *      pin16  == !ct_out,  pin7 == !ct_in       [pins stay active low]
+ *
+ *  Rejected: expanding the per-slice identity
+ *  pin16 == pin17 & (pin15 # pin7) - it is the truth of the Hc181
+ *  model with G/T asserted LOW, not of silicon; its pin-level form
+ *  computes the complement term wrongly and fails every generating
+ *  vector (64 of 128 bench rows wrong, all inter-slice carries).
+ *
+ *  The measured '182 equation  Cn+x = !/G0 + !/P0.Cn  IS the
+ *  complement-form lookahead, and the carries below have exactly that
+ *  shape - which is why a real '182 needs no inverters.
+ *
+ *  WIRING: Tk is slice k's pin 17, Gk is slice k's pin 15, straight
+ *  wire, no inversions anywhere in the carry path; CN181 is the level
+ *  of the /CN181 net (ALU_R16 pin 22 = slice 0 pin 7 = this pin 1).
+ *  EVERY NAME BELOW IS A PHYSICAL PIN LEVEL.
+ *
+ *  Derivation, mechanical: chain the true-carry identity across the
+ *  three inter-slice boundaries, complement to pin level:
+ *      CNX = !( T0 & (G0 # !CN181) )
+ *      CNY = !( T1 & (G1 # !CNX ) )
+ *      CNZ = !( T2 & (G2 # !CNY ) )
+ *  expanded to sum-of-products below.  Slice 3's pins 15/17 are NOT
+ *  inputs: COUT is slice 3's own pin 16 (true carry, active low).
+ *  Leave U4.15/U4.17 unconnected on the board.
+ *
+ *  V is the discrete overflow network's exact function,
+ *      V = !M & (AQ15 $ F15) & (SUB $ BQ15 $ F15)
+ *  F15 is the RAW slice output (U4 pin 13, pre-fence), not FB15.
+ *
+ *  GATE: 128-row exhaustive sweep of the three carry
+ *  equations against the chained identity - 0 mismatches; 16-bit
+ *  four-slice chain (all 16 S codes x 4,000 random operand pairs x
+ *  both Cn) against ripple truth - 0 mismatches; the four bench
+ *  canaries confirm 0xFFFF+1 = 0x0000/COUT=0, 0x0003-0x0005 =
+ *  0xFFFE/COUT=1, AINC 0x00FF = 0x0100, ADEC 0x0100 = 0x00FF.
+ *  BlinkyJED compiles the burn; its output is the artefact of record.
+ *
+ *  Term counts: CNZ 4, V 4, CNY 3, CNX 2.
+ */
+
+/* ---- inputs (all dedicated) ---- */
+PIN  1 = CN181;                 /* /CN181 net level, straight wire     */
+PIN  2 = T0;                    /* slice 0 pin 17                      */
+PIN  3 = G0;                    /* slice 0 pin 15                      */
+PIN  4 = T1;                    /* slice 1 pin 17                      */
+PIN  5 = G1;                    /* slice 1 pin 15                      */
+PIN  6 = T2;                    /* slice 2 pin 17                      */
+PIN  7 = G2;                    /* slice 2 pin 15                      */
+PIN  8 = SUB;                   /* ALU_R16 pin 23                      */
+PIN  9 = M;                     /* ALU_R16 pin 21                      */
+PIN 10 = AQ15;                  /* A latch bit 15 (U8 pin 12)          */
+PIN 11 = BQ15;                  /* B latch bit 15 (U10 pin 12)         */
+PIN 13 = F15;                   /* RAW slice 3 F3 (U4 pin 13), pre-fence */
+
+/* ---- outputs ---- */
+PIN 23 = CNX;                   /* -> slice 1 pin 7                    */
+PIN 22 = CNY;                   /* -> slice 2 pin 7                    */
+PIN 21 = CNZ;                   /* -> slice 3 pin 7                    */
+PIN 19 = V;                     /* active high signed overflow         */
+/* pins 14-18, 20 spare                                                */
+
+/* ================= carries =================
+ * Complement-form lookahead on the measured active-high exports.
+ * Same shape as the real '182's own equations - deliberately.
+ */
+CNX = !T0
+    # !G0 & CN181;
+
+CNY = !T1
+    # !G1 & !T0
+    # !G1 & !G0 & CN181;
+
+CNZ = !T2
+    # !G2 & !T1
+    # !G2 & !G1 & !T0
+    # !G2 & !G1 & !G0 & CN181;
+
+/* ================= signed overflow ================= */
+/* (AQ15 $ F15) & (SUB $ BQ15 $ F15) & !M, multiplied out.  Do not
+ * re-factor through intermediate XOR nodes - the whole point is one
+ * GAL level. */
+V =  AQ15 & !F15 &  SUB & !BQ15 & !M
+  #  AQ15 & !F15 & !SUB &  BQ15 & !M
+  # !AQ15 &  F15 & !SUB & !BQ15 & !M
+  # !AQ15 &  F15 &  SUB &  BQ15 & !M;

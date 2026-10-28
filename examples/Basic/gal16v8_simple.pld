@@ -1,0 +1,46 @@
+Name      gal16v8_simple ;
+PartNo    TTLSIM16S ;
+Date      07/02/2026 ;
+Revision  01 ;
+Designer  TTLSim ;
+Company   TTLSim ;
+Assembly  None ;
+Location  ;
+Device    g16v8as ;
+
+/* ------------------------------------------------------------------
+ * GAL16V8 -- SIMPLE mode  (mnemonic G16V8AS)
+ *
+ * Every macrocell is combinational. There is NO global clock and NO
+ * global output enable, so pins 1 and 11 are ORDINARY INPUTS here.
+ * (Contrast gal16v8_registered.pld, where pin 1 = CLK and pin 11 = /OE.)
+ *
+ * Pins 15 and 16 have no feedback path in simple mode; this design
+ * needs no feedback, so it uses 19/18/17/14 for outputs.
+ * ------------------------------------------------------------------ */
+
+/* inputs */
+PIN 1  = f ;      /* CLK pin used as a plain input in simple mode  */
+PIN 2  = a ;
+PIN 3  = b ;
+PIN 4  = c ;
+PIN 5  = d ;
+PIN 11 = g ;      /* /OE pin used as a plain input in simple mode  */
+
+/* outputs (all combinational) */
+PIN 19 = yand ;
+PIN 18 = yor ;
+PIN 17 = yxor ;
+PIN 14 = yfg ;
+
+yand = a & b & c & d ;
+yor  = a # b # c # d ;
+yxor = a $ b ;
+yfg  = f & g ;
+
+/* Expected (combinational):
+ *   yand = 1  only when a=b=c=d=1
+ *   yor  = 0  only when a=b=c=d=0
+ *   yxor = a XOR b
+ *   yfg  = f AND g          (proves pins 1 and 11 act as inputs)
+ */

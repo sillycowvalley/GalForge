@@ -1,0 +1,52 @@
+Name      TWAIT_R16;
+PartNo    R16-26;
+Date      2026-10-12;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Clock v2 (Clock_v2_Module.md);
+Location  U3;
+Device    g16v8;
+
+/*  Reggie-16 Clock v2, the bounded wait [R7] beside the T counter
+ *  (U2, '161): v1's hold flop and its gates (Clock_Module.md section 9,
+ *  v1's U24 half A, U25, U26 and U23 section 2) in one ATF16V8C-7PU,
+ *  the fleet's Atmel -7 (off the datapath), clocked on CLKGEN with
+ *  the counter.
+ *
+ *  ARM = T3 (the count 0011) & WAIT & !HOLD.  At T3's would-be final
+ *  edge ARM withholds the counter's count enable (ENP) and its reload
+ *  (/LOAD), and HOLD sets there; with HOLD set ARM is false, so the
+ *  next edge counts or reloads and clears HOLD: exactly one inserted
+ *  clock, honoured only in T3, never re-armed in the same state.
+ *  A held final T3 defers the /TRST reload, and the ENTRY sample that
+ *  steers it, to the edge that performs it.
+ *  Reset: v1 clears HOLD asynchronously.  Here the T counter's clear
+ *  holds the count at 0, so ARM is false and ENP and /LOAD are v1's
+ *  through reset whatever HOLD holds; CLKGEN runs through reset, and
+ *  its first rise there clears HOLD.
+ *
+ *  Registered mode: pin 1 is CLKGEN, pin 11 the global /OE, tied to
+ *  GND.  Pins 8, 9 and 12-16 unused, tied to GND in the capture.
+ *  Term counts: HOLD 1, ENP 1, LOADN 2.
+ */
+
+/* ---- inputs ---- */
+PIN  2 = T0;                    /* U2 '161 QA                          */
+PIN  3 = T1;                    /* U2 QB                               */
+PIN  4 = T2;                    /* U2 QC                               */
+PIN  5 = T3;                    /* U2 QD, INENTRY                      */
+PIN  6 = !WAIT;                 /* H23.7, pulled up                    */
+PIN  7 = !TRST;                 /* H25.2, pulled up                    */
+
+/* ---- outputs ---- */
+PIN 19 = HOLD;                  /* registered - probe                  */
+PIN 18 = ENP;                   /* combinational - U2 ENP              */
+PIN 17 = LOADN;                 /* combinational - U2 /LOAD            */
+
+HOLD.d = T0 & T1 & !T2 & !T3 & WAIT & !HOLD;
+
+!ENP   = T0 & T1 & !T2 & !T3 & WAIT & !HOLD;
+
+LOADN  = !TRST
+       # T0 & T1 & !T2 & !T3 & WAIT & !HOLD;

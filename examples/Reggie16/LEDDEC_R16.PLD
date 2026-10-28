@@ -1,0 +1,74 @@
+Name      LEDDEC_R16;
+PartNo    R16-17;
+Date      2026-09-19;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  LED output module (LED_Module.md);
+Location  U1;
+Device    g22v10;
+
+/*  Reggie-16 16-bit LED output port, the whole decode: one write-only
+ *  word at 0x3FCD, the latch strobe.  LED_Module.md owns the module;
+ *  this device solely owns /LEDWR - one owner per strobe, next to the
+ *  cause port (0x3FCC, read-only, on the Fetch & Control board);
+ *  0x3FCE-0x3FCF are unallocated and undecoded.  Peripheral board owns
+ *  0x3FC0-0x3FEF minus the 0x3FCC read and this write; MMU board from
+ *  0x3FF0.
+ *
+ *  A 22V10 for the input width alone: full-address decode plus
+ *  /MEMWR is 17 inputs - the R16_CAUSE pattern, twelve dedicated
+ *  pins plus five macrocell pins declared as inputs.  One product
+ *  term on one OLMC; the other nine stay spare.
+ *
+ *  Read side: none - a load from 0x3FCD reads nothing (the module is
+ *  output-only; a future input console adds its own read strobe and
+ *  '541 pair, no term change here).  Board-side: /LEDWR carries a
+ *  10 k pull-up so an unprogrammed or absent GAL never strobes the
+ *  latches.  The '574 pair clocks on /LEDWR's RISING edge - data
+ *  captured as the write completes.
+ *
+ *  MEMWR_L is the PIN LEVEL of the active-low strobe.
+ *
+ *  Draft check: the LEDWR term swept exhaustively at generation
+ *  (2^17 rows, A[15:0] x MEMWR) - fires exactly once, at the 0x3FCD
+ *  write; 0 mismatches.  BlinkyJED compile and parse-back is the
+ *  ratifying gate; its output is the artefact of record
+ *  (LEDDEC_R16.jed embedded in the capture).  Pin assignment matches
+ *  R16_LED.ttlproj.
+ *
+ *  Term counts: LEDWR 1.
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = MEMWR_L;               /* /MEMWR pin level                    */
+PIN  2 = A0;
+PIN  3 = A1;
+PIN  4 = A2;
+PIN  5 = A3;
+PIN  6 = A4;
+PIN  7 = A5;
+PIN  8 = A6;
+PIN  9 = A7;
+PIN 10 = A8;
+PIN 11 = A9;
+PIN 13 = A10;
+
+/* ---- inputs on macrocell pins (used purely as inputs) ---- */
+PIN 14 = A11;
+PIN 15 = A12;
+PIN 16 = A13;
+PIN 17 = A14;
+PIN 18 = A15;
+
+/* ---- outputs ---- */
+/*  Pins 19-22 spare OLMCs (16/14/12/10 terms), unconnected in the
+ *  capture - the module's full-size spares.                          */
+PIN 23 = !LEDWR;               /*  8 avail, 1 used - '574 pair CLK    */
+
+/* ================= the window ================= */
+WINDOW = !A15 & !A14 & A13 & A12 & A11 & A10 & A9 & A8 & A7 & A6;
+
+/* ================= output ================= */
+/*  LED write port, 0x3FCD exactly, write-only.                       */
+LEDWR = WINDOW & !A5 & !A4 & A3 & A2 & !A1 & A0 & !MEMWR_L;

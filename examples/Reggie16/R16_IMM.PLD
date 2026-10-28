@@ -1,0 +1,150 @@
+Name      R16_IMM;
+PartNo    R16-04;
+Date      2026-08-11;
+Revision  E;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Fetch and Control;
+Location  U-IMM;
+Device    g22v10;
+
+/*  Reggie-16 decode, device 4 of 5, fitted as U19 on the Fetch &
+ *  Control board: the LDH high-byte enable (/IMMHOE), shifter fill
+ *  (SRSEL), /TRST, /HALTREQ, write address select bit WSEL1, the
+ *  shifter output enable /SOE and the main immediate enable /IMMOE
+ *  (placements: Reggie16_Interrupt_Architecture.md section 8.2).
+ *  WSEL1, /SOE and /IMMOE are RST-free by the same ST-pinning
+ *  assumption the whole device rests on (below; Reggie16_PLD_Notes.md
+ *  section 2).  This device gets no fence input: it drives no fenced
+ *  strobe, and /HALTREQ's U-mode fence (!IE) lives at the clock
+ *  module's halt-combining logic, where halt policy already lives.
+ *  On the board pin 22 is the raw /HALTREQR, ORed with CLK on U28
+ *  (the IR-capture-edge hazard mask) to make /HALTREQ.
+ *
+ *  IMMEDIATE-FORM DECODE LIVES ON BBUS_R16: the B-Bus Unit derives
+ *  imm8/imm5/imm9 and the sign rule directly from IR[15:12]; there
+ *  is no IMMSEL or SIGNSEL signal.
+ *
+ *  NO RST PIN.  This device relies on reset holding the T counter at
+ *  0: every output is qualified by T2/T3/T4, all false at ST=0.  The
+ *  reset/ST-pinning assumption is Reggie16_PLD_Notes.md section 2's.
+ *
+ *  HLT IS QUALIFIED BY !IR11 AND !IR10.  Shape-00 sub=1 carries the
+ *  system group (IR10=1: EI, DI, SWF, SYS - decoded on R16_MISC);
+ *  HLT is IR11=0 AND IR10=0 only, and the assembler emits zeros in
+ *  those bits.  IR10 enters on macrocell pin 23.
+ *
+ *  /TRST COVERS THE SYSTEM TIER by construction: RTI (shape-10 sub
+ *  01001) falls inside the IR3 & !IR2 ends-at-T2 cover, EI/DI/SWF/SYS
+ *  inside the SH00 cover, and the TI states never assert any term
+ *  here (the T4 term is the exact code 100) - the counter free-runs
+ *  101-110-111 and wraps to T0 naturally.  Written in explicit
+ *  positive product terms; the update forms (011xx) are the only
+ *  shape-10 subs absent from the T2 covers, and end at T4.
+ *
+ *  HAND-DERIVED, pending mechanical regeneration.
+ *  Term counts: TRST 11, IMMOE 4, SOE 2, everything else 1.
+ *
+ *  Verified on the seam of v1's boards: Burn 6 passes, 202,752
+ *  assertions, 0 faults, with R16_SEQ revision D in U17
+ *  (R16_Machine_Qualification.md section 1.1 and open item 12).
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = IR15;
+PIN  2 = IR14;
+PIN  3 = IR13;
+PIN  4 = IR12;
+PIN  5 = IR11;
+PIN  6 = IR4;
+PIN  7 = IR3;
+PIN  8 = IR2;
+PIN  9 = IR1;
+PIN 10 = IR0;
+PIN 11 = ST2;
+PIN 13 = ST1;
+
+/* ---- inputs on macrocell pins ---- */
+PIN 14 = ST0;
+PIN 23 = IR10;
+
+/* ---- outputs, placed by term count ---- */
+PIN 15 = WSEL1;                 /* 10 avail,  1 used - WADDR '153 sel  */
+PIN 16 = !SOE;                  /* 12 avail,  2 used - shifter onto D  */
+PIN 17 = !IMMOE;                /* 14 avail,  4 used - immed onto B    */
+PIN 18 = !IMMHOE;               /* 16 avail,  1 used                   */
+PIN 19 = !TRST;                 /* 16 avail, 11 used                   */
+PIN 20 = SRSEL1;                /* 14 avail,  1 used                   */
+PIN 21 = SRSEL0;                /* 12 avail,  1 used                   */
+PIN 22 = !HALTREQ;              /* 10 avail,  1 used                   */
+
+/*  No spare macrocells.                                               */
+
+/* ================= T-states ================= */
+T2 = !ST2 &  ST1 & !ST0;
+T3 = !ST2 &  ST1 &  ST0;
+T4 =  ST2 & !ST1 & !ST0;
+
+/* ================= class and shape ================= */
+C1   =  IR15;
+SH00 = !IR15 & !IR14 & !IR13;
+SH01 = !IR15 & !IR14 &  IR13;
+SH10 = !IR15 &  IR14 & !IR13;
+LDSH = !IR15 &  IR14 &  IR13;                       /* LD, shape 11    */
+
+HLT  = SH00 &  IR12 & !IR11 & !IR10;                /* see header      */
+BCC  = SH00 & !IR12;
+LDI  = C1 & IR14 & IR13 & IR4;
+ADJ  = SH10 & IR4;
+STI  = SH10 & !IR4 & !IR3 &  IR2 & !IR1 & !IR0;     /* 00100           */
+SHRA = SH10 & !IR4 & !IR3 & !IR2 &  IR1 & !IR0;     /* 00010 arith     */
+SHRR = SH10 & !IR4 & !IR3 & !IR2 &  IR1 &  IR0;     /* 00011 rotate    */
+
+/* ================= LDH high-byte driver ================= */
+IMMHOE = T2 & SH01;
+
+/* ================= shifter fill =================
+ * SRSEL: 00 zero (logical - the rest state), 01 FB15 (arithmetic),
+ * 10 CF (rotate through carry - the SELECTED bank via the Flag
+ * Unit's read-steer '157, not raw CLAT: an ISR rotate must see
+ * bank 1).
+ */
+SRSEL0 = T2 & SHRA;
+SRSEL1 = T2 & SHRR;
+
+/* ================= instruction end ================= */
+TRST = T4                                           /* update forms    */
+     # T3 & LDSH                                    /* plain LD        */
+     # T3 & STI                                     /* plain ST        */
+     # T2 & C1                                      /* ALU, LDI        */
+     # T2 & SH00                                    /* Bcc/HLT/NOP/    */
+                                                    /*   system ops    */
+     # T2 & SH01                                    /* LDH             */
+     # T2 & SH10 & IR4                              /* ADJ             */
+     # T2 & SH10 & !IR4 & !IR3 & !IR2               /* MOV, SHR        */
+     # T2 & SH10 & !IR4 & !IR3 &  IR2 & IR0         /* CMP, CMPC       */
+     # T2 & SH10 & !IR4 & !IR3 &  IR2 & IR1         /* CMN, CMPC       */
+     # T2 & SH10 & !IR4 &  IR3 & !IR2;              /* CMNC, RTI,      */
+                                                    /*   reserved, TST */
+
+/* ================= halt request ================= */
+HALTREQ = T2 & HLT;
+
+/* ================= write address select bit 1 =================
+ * WSEL1: T4 -> rb (10), TI0 -> 1100 (11).  RST-free: reset pins the
+ * counter at 0, ST2 never true.
+ */
+WSEL1 = ST2 & !ST1;
+
+/* Shifter onto D.  The two terms cover ALL THREE shift subs - 00001
+ * logical, 00010 arithmetic, 00011 rotate - so do not "simplify"
+ * onto the SHRA/SHRR nodes, which would drop 00001.
+ */
+SOE = T2 & SH10 & !IR4 & !IR3 & !IR2 & IR1
+    # T2 & SH10 & !IR4 & !IR3 & !IR2 & IR0;
+
+/* Main immediate driver onto B.  Bcc drives B whether or not the
+ * branch is taken; harmless, and one product term cheaper than
+ * gating on COND - which this device never sees.
+ */
+IMMOE = T2 & ( LDI # ADJ # LDSH # BCC );

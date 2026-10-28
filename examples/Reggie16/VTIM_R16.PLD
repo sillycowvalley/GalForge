@@ -1,0 +1,68 @@
+Name      VTIM_R16;
+PartNo    R16-34;
+Date      2026-10-27;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Video card (Video_Card.md);
+Location  U4;
+Device    g22v10;
+
+/*  Reggie-16 video card, the vertical timing, clocked on CCLK (DOT2 from
+ *  HTIM_R16, rising at dot 3's end, once a character).  LINE[9:0] is
+ *  the line counter ('163s, 0-524), which steps at the CCLK edge that
+ *  ends column 99, the one edge at which LINEEN is high.  The registers
+ *  move with it, from the line before the edge:
+ *      VBLANK   lines 480-524        set as line 479 ends
+ *      VSYNC    lines 490-491        (Video_Card.md, Vertical timing)
+ *  and hold at every other CCLK edge.  LCLR, combinational, clears the
+ *  line counter at the edge that ends line 524.  RST is RSTB, the
+ *  slot's active-high reset, inverted for the display-enable '74.
+ *
+ *  Term counts: VBLANK 5, VSYNC 3, LCLR 1, RST 1.  Pins 15-19 spare.
+ */
+
+/* ---- inputs ---- */
+PIN  1 = CCLK;                  /* DOT2, HTIM_R16                      */
+PIN  2 = LINE0;                 /* line counter, '163s                 */
+PIN  3 = LINE1;
+PIN  4 = LINE2;
+PIN  5 = LINE3;
+PIN  6 = LINE4;
+PIN  7 = LINE5;
+PIN  8 = LINE6;
+PIN  9 = LINE7;
+PIN 10 = LINE8;
+PIN 11 = LINE9;
+PIN 13 = LINEEN;                /* HTIM_R16                            */
+PIN 14 = RSTB;                  /* the slot's RSTB, active high        */
+
+/* ---- outputs ---- */
+PIN 23 = VBLANK;                /*  8 avail, 5 used - registered       */
+PIN 22 = !VSYNC;                /* 10 avail, 3 used - registered       */
+PIN 21 = !LCLR;                 /* 12 avail, 1 used - line '163s /CLR  */
+PIN 20 = !RST;                  /* 14 avail, 1 used - '74 /CLR         */
+
+/* ================= VBLANK, the line after 479-523 ================= */
+VBLANK.d = LINEEN & !LINE9 & LINE8 & LINE7 & LINE6 & !LINE5 & LINE4
+           & LINE3 & LINE2 & LINE1 & LINE0                     /* 479     */
+         # LINEEN & !LINE9 & LINE8 & LINE7 & LINE6 & LINE5     /* 480-511 */
+         # LINEEN & LINE9 & !LINE8 & !LINE7 & !LINE6 & !LINE5
+           & !LINE4 & !LINE3                                    /* 512-519 */
+         # LINEEN & LINE9 & !LINE8 & !LINE7 & !LINE6 & !LINE5
+           & !LINE4 & LINE3 & !LINE2                            /* 520-523 */
+         # !LINEEN & VBLANK;
+
+/* ================= VSYNC, the line after 489-490 ================= */
+VSYNC.d = LINEEN & !LINE9 & LINE8 & LINE7 & LINE6 & LINE5 & !LINE4
+          & LINE3 & !LINE2 & !LINE1 & LINE0                    /* 489     */
+        # LINEEN & !LINE9 & LINE8 & LINE7 & LINE6 & LINE5 & !LINE4
+          & LINE3 & !LINE2 & LINE1 & !LINE0                    /* 490     */
+        # !LINEEN & VSYNC;
+
+/* ================= the line counter's clear, line 524 ================= */
+LCLR = LINEEN & LINE9 & !LINE8 & !LINE7 & !LINE6 & !LINE5 & !LINE4
+       & LINE3 & LINE2 & !LINE1 & !LINE0;
+
+/* ================= the reset ================= */
+RST = RSTB;

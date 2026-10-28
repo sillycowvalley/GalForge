@@ -1,0 +1,48 @@
+Name      gal16v8_complex ;
+PartNo    TTLSIM16C ;
+Date      07/02/2026 ;
+Revision  01 ;
+Designer  TTLSim ;
+Company   TTLSim ;
+Assembly  None ;
+Location  ;
+Device    g16v8ma ;
+
+/* ------------------------------------------------------------------
+ * GAL16V8 -- COMPLEX mode  (mnemonic G16V8MA)
+ *
+ * Combinational, but each macrocell has its OWN tri-state controlled
+ * by a product term (.oe), and combinational feedback is allowed.
+ * Pins 1 and 11 are still ordinary inputs (NOT global CLK / /OE).
+ * Either a per-pin .oe OR combinational feedback forces complex mode;
+ * this design uses both.
+ *
+ * In complex mode pins 12 and 19 are output-only (no feedback);
+ * pins 13..18 are I/O with feedback.
+ * ------------------------------------------------------------------ */
+
+/* inputs */
+PIN 2  = a ;
+PIN 3  = b ;
+PIN 4  = c ;
+PIN 5  = sel ;
+PIN 11 = ena ;    /* /OE pin used as an ordinary input driving a per-pin OE */
+
+/* outputs */
+PIN 19 = y1 ;     /* output-only in complex mode                    */
+PIN 18 = y2 ;     /* tri-stated by ena via .oe                      */
+PIN 17 = fb ;     /* I/O: drives its pin AND feeds back into array  */
+PIN 16 = g ;      /* consumes the feedback from fb                  */
+
+y1    = a & b # c ;
+y2    = a $ b ;
+y2.oe = ena ;             /* per-macrocell output enable */
+fb    = a & c ;
+g     = fb # sel ;        /* combinational feedback of fb */
+
+/* Expected:
+ *   y1 = (a AND b) OR c
+ *   y2 = a XOR b        -- driven only when ena=1, else Hi-Z
+ *   fb = a AND c
+ *   g  = fb OR sel = (a AND c) OR sel
+ */

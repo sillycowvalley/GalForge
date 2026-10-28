@@ -1,0 +1,58 @@
+Name      RFSEQ_R16;
+PartNo    R16-18;
+Date      2026-10-11;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Register File v2 (Register_File_v2_Module.md);
+Location  U12;
+Device    g16v8;
+
+/*  Reggie-16 Register File v2, the write sequence for four SRAMs.
+ *  Lattice GAL16V8D-15: Atmel GALs stay off the datapath, and a -15
+ *  fits the 62 ns low phase (the module's Timing).  Combinational
+ *  throughout; the feedback below puts the GAL in complex mode.
+ *
+ *  CLK high is the read phase: the SRAMs read, the fences are
+ *  transparent and off the I/O nodes.  CLK low is the write phase
+ *  when the latched WE asks for one.  The write's end comes from the
+ *  clock through U13 alone (/SRWE = NAND(WPHD, /CLKR)); everything
+ *  that moves after it waits on /SRWE itself, read back on pin 4, so
+ *  the address, the fences and the SRAMs' outputs cannot move under
+ *  a write that has not ended.
+ *
+ *  At the fall: FLE closes both fences; SEL turns the muxes to the
+ *  write address and /SROE turns the SRAMs off; one delay later the
+ *  data fence drives (/DFOE) and WPHD starts the write.
+ *  At the rise: /SRWE rises from U13; then SEL, /DFOE and FLE let
+ *  go; DFOFF follows /DFOE one delay on, and /SROE turns the SRAMs
+ *  back on one delay after that.
+ *
+ *  Dialect: constant outputs are GND/VCC keywords, never number
+ *  literals.  Pin assignment matches Register_File_v2.ttlproj.
+ */
+
+/* ---- inputs ---- */
+/*  Pins 1, 5-9 and 11 unused, tied to GND in the capture, with
+ *  macrocell pins 12 and 13: neither has an equation, and the fuse
+ *  map leaves their output enable never true.                       */
+PIN  2 = !CLKR;                 /* U14 '04: CLKR true while CLK high */
+PIN  3 = WE_L;                  /* U7 write fence: the latched WE_C  */
+PIN  4 = !SRWE;                 /* /SRWE from U13, read back         */
+
+/* ---- outputs ---- */
+PIN 19 = !SROE;                 /* SRAMs' /OE                        */
+PIN 18 = SEL;                   /* U5/U6 '157 select: WADDR_L        */
+PIN 17 = !DFOE;                 /* data fence U8-U11 /OE             */
+PIN 16 = DFOFF;                 /* /DFOE one delay on                */
+PIN 15 = WPHD;                  /* U13: may start the write          */
+PIN 14 = FLE;                   /* fences U7-U11 LE                  */
+
+WPH   = WE_L & !CLKR;           /* node: the write phase asked for   */
+
+SEL   = WPH # SRWE;             /* from the fall until /SRWE rises   */
+DFOE  = SEL & (WPH # SRWE);     /* one delay after SEL               */
+DFOFF = !DFOE;                  /* the fence's enable, one delay on  */
+SROE  = !(WPH # SRWE) & DFOFF;  /* on once the fence has let go      */
+WPHD  = WPH & SEL;              /* one delay after SEL               */
+FLE   = CLKR & !SRWE;           /* close at the fall, open after /SRWE */

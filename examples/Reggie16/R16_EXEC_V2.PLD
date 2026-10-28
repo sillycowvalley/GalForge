@@ -1,0 +1,273 @@
+Name      R16_EXEC_V2;
+PartNo    R16-21;
+Date      2026-10-12;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Fetch and Control v2;
+Location  U-EXEC;
+Device    g22v10;
+
+/*  Reggie-16 decode on F&C v2: ALU function code FC[3:0], register
+ *  write enable WE and port A address select ASEL[1:0].  v1's R16_EXEC
+ *  (R16-03 rev F) with three changes, every other row as v1's:
+ *
+ *  1. WSEL0 LEAVES FOR R16_STD, and pin 22 takes STD, the stores with
+ *     displacement (Reggie16_Proposed_v2.md section 10, ISA section
+ *     6.5): 0x1A00-0x1BFF in both modes, 0x1600-0x17FF with IE set.
+ *  2. THE STORES.  T2: port A reads the base at [12:9] (ASEL = 10) and
+ *     the ALU adds the immediate on B (FC = 0, ADD, so no FC term);
+ *     T3: port A reads rb at [8:5] (ASEL = 01) and the ALU passes it
+ *     (FC = 7, PASSA), as the update stores' T3 does.  FC3, 12 terms of
+ *     12, is not touched.  WE stays off in both states.
+ *  3. HAZARD TERMS (R16_Machine_Margins.md item 10).  ASEL0, ASEL1
+ *     and FC0 are 1 in T0 (the fetch's r15 and AINC) and in the last
+ *     state of some instructions, and T2 to T0 changes ST1 alone, T4
+ *     to T0 ST2 alone.  Each such term spans both states instead:
+ *     !ST2 & !ST0 for a T2 that ends the instruction - ASEL1's after
+ *     TST, the compares, ADJ, LDH and a taken branch, ASEL0's after a
+ *     taken branch, FC0's after TST, CMP, CMPC, LDH, SUB, SUBC and OR
+ *     - and !ST1 & !ST0 for an update form's T4, ASEL0's and FC0's.
+ *     FC0's take !RST as its T0 term does (the reset-FC contract
+ *     below).  At T0 each is already 1, so the function is v1's at
+ *     every input the machine reaches; FC0 differs only with RST high
+ *     off T0, which reset never allows.  No term is added.  WE, /FOE
+ *     (R16_SEQ_V2) and FC3 keep the same kind of hazard at those
+ *     edges, harmless behind the fence and the low-phase write (item
+ *     10).
+ *
+ *  A store's T3 to T0 reload changes two ST bits and may pass T1 or
+ *  T2, where ASEL0 and FC0 are 0 for it: a static-1 no term can
+ *  cover, as at every multi-bit reload.
+ *
+ *  RESET MUST EMIT FC=10.  Reset pins the T counter at 0, so T0 is
+ *  true throughout - and fetch's AINC lives on FC0's T0 term, which
+ *  is therefore !RST-gated, as are FC0's hazard terms, which are true
+ *  in T0.  FC1 and FC3 assert on RST, nothing else fires, and the
+ *  code is a clean 1010.  Without the gate reset emits FC=11
+ *  (LDH-split, low half passes A) and - with port A strapped
+ *  always-driving (R16_SEQ_V2, carrier /OEA_C) - writes
+ *  r15 <- {0x00, r15[7:0]}: the PC's low byte never clears.  DO NOT
+ *  remove the gate; pin it in any regenerated truth table.  FC3's own
+ *  T0 term overlaps its RST term harmlessly and stays ungated.
+ *
+ *  OUTPUT CEILING.  COND takes pin 14, UVIOL pin 23 and STD pin 22,
+ *  leaving seven output macrocells, all used.  WSEL0 and WSEL1 live on
+ *  R16_STD, /SOE on R16_IMM_V2.
+ *
+ *  IR12 does not reach this device (no pin).  Its BCC term is really
+ *  "shape 00", which also matches HLT, NOP and the system group.  Safe
+ *  only because every use is ANDed with COND, and COND is gated by
+ *  IR12 inside R16_COND, so HLT, NOP and the system group hold it low.
+ *  DO NOT remove the COND qualifier from any shape-00 term here.  The
+ *  stores are shape 00 too, and reach this device only through STD.
+ *
+ *  INTERRUPT ENTRY (TI0=101, TI1=110, TI2=111) and RTI.  T4 is
+ *  reachable only via the update forms and the TI states only via
+ *  the clock module's steered reload; those reachability facts are
+ *  load-bearing for the covers below: ST2 covers "T4 or any TI"
+ *  (WE), ST2 & ST0 picks {TI0, TI2} (ASEL = r15, FC0, FC2 via exact
+ *  TI0), ST2 & ST1 picks {TI1, TI2} (FC3).
+ *    TI0: r12 <- r15  (FC=7 pass-A, WSEL=11 -> hardwired 1100)
+ *    TI1: r15 <- 0    (FC=10 ZERO - reset's clean-code contract)
+ *    TI2: r15 <- 1    (FC=9 AINC)
+ *  RTI (shape-10 sub 01001) is datapath-plain MOV: FC=8, WE,
+ *  WSEL=00 writing the encoded rd (assembler emits r15).
+ *
+ *  PROTECTED TIER (Reggie16_Interrupt_Architecture.md section 8):
+ *  pin 23 takes UVIOL, the board-computed U-mode-violation condition
+ *  (see R16_SEQ_V2's header for its derivation and the raw-literal
+ *  safety argument).  Kernel code (IE clear) is untouched by
+ *  construction.
+ *
+ *  THE WE FENCE IS SPLIT.  RST, T0 and the TI states are unfenced;
+ *  T4 and every T2/T3 write carry !UVIOL.  The unfenced writes cannot
+ *  be U-mode violations by construction: RST and T0 target r15
+ *  (WADDR = 1111), TI0 targets the hardwired 1100 and TI1/TI2 r15
+ *  again, so none can false-hit the r10 compare.  T4's pointer
+ *  writeback (WADDR = rb - a real r10 candidate) and all T2/T3 writes
+ *  are fenced, which keeps the r10 leg and the store/load kills.
+ *    Rejected: a blanket !UVIOL fence on every WE term - IE commits
+ *  at RTI's ending rise while the MAR holds the RTI's own
+ *  fixed-quarter fetch address until mid-T0, so MVIOL = IE.!A15.!A14
+ *  is genuinely true for that half-state, and a fenced T0 loses PC+1
+ *  after every RTI dispatch [M5].  The same window opens on the entry
+ *  side: on fetch-class traps the MAR holds the fixed address through
+ *  TI0/TI1 [S5], so a fenced TI0 would lose the entry's r12 save.
+ *
+ *  Term counts:  WE 15 (of pin 18's 16), FC0 13, FC1 13, FC3 12 -
+ *  PIN 16 EXACTLY FULL, the set's tightest output - ASEL1 12, FC2 9,
+ *  ASEL0 7.
+ *
+ *  Swept at every input against v1's map, and with the set against
+ *  v1's over every word, mode and state (Reggie16_PLD_Notes.md
+ *  section 9).
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = IR15;
+PIN  2 = IR14;
+PIN  3 = IR13;
+PIN  4 = IR4;
+PIN  5 = IR3;
+PIN  6 = IR2;
+PIN  7 = IR1;
+PIN  8 = IR0;
+PIN  9 = ST2;
+PIN 10 = ST1;
+PIN 11 = ST0;
+PIN 13 = RST;
+
+/* ---- inputs on macrocell pins ---- */
+PIN 14 = COND;                  /* from R16_COND pin 22                */
+PIN 22 = STD;                   /* from R16_STD pin 23 - see header    */
+PIN 23 = UVIOL;                 /* U-mode violation - see header       */
+
+/* ---- outputs, placed by term count ---- */
+PIN 15 = ASEL0;                 /* 10 avail,  7 used                   */
+PIN 16 = FC3;                   /* 12 avail, 12 used - FULL            */
+PIN 17 = ASEL1;                 /* 14 avail, 12 used                   */
+PIN 18 = WE;                    /* 16 avail, 15 used                   */
+PIN 19 = FC0;                   /* 16 avail, 13 used                   */
+PIN 20 = FC1;                   /* 14 avail, 13 used                   */
+PIN 21 = FC2;                   /* 12 avail,  9 used                   */
+
+/* ================= T-states ================= */
+T0 = !ST2 & !ST1 & !ST0;
+T2 = !ST2 &  ST1 & !ST0;
+T3 = !ST2 &  ST1 &  ST0;
+T4 =  ST2 & !ST1 & !ST0;
+T20 = !ST2 & !ST0;              /* T2 or T0: the hazard terms' span    */
+T40 = !ST1 & !ST0;              /* T4 or T0: the hazard terms' span    */
+
+/* ================= class and shape ================= */
+C1   =  IR15;
+SH00 = !IR15 & !IR14 & !IR13;   /* BCC surrogate - see header warning */
+SH10 = !IR15 &  IR14 & !IR13;
+LDSH = !IR15 &  IR14 &  IR13;   /* LD, shape 11                        */
+LDH  = !IR15 & !IR14 &  IR13;
+
+LDI  = C1 & IR14 & IR13 & IR4;
+ADJ  = SH10 & IR4;
+MOVI   = SH10 & !IR4 & !IR3 & !IR2 & !IR1 & !IR0;
+STI    = SH10 & !IR4 & !IR3 &  IR2 & !IR1 & !IR0;
+CMPI   = SH10 & !IR4 & !IR3 &  IR2 & !IR1 &  IR0;   /* 00101 CMP     */
+CMPCI  = SH10 & !IR4 & !IR3 &  IR2 &  IR1 &  IR0;   /* 00111 CMPC    */
+CMNCI  = SH10 & !IR4 &  IR3 & !IR2 & !IR1 & !IR0;   /* 01000 CMNC    */
+TSTI   = SH10 & !IR4 &  IR3 & !IR2 &  IR1 &  IR0;   /* 01011 TST     */
+RTI    = SH10 & !IR4 &  IR3 & !IR2 & !IR1 &  IR0;   /* 01001 RTI     */
+
+UPD     = SH10 & !IR4 & IR3 & IR2;                  /* 011xx          */
+LDUPD   = UPD & !IR1;
+STUPD   = UPD &  IR1;
+POSTINC = UPD & !IR0;
+PREDEC  = UPD &  IR0;
+
+/* ================= write enable =================
+ * SPLIT FENCE - see header.  The unfenced group can never be a
+ * U-mode violation by construction (WADDR 1111/1100 only); the
+ * !UVIOL group is every write a U-mode instruction can aim.  No
+ * term for STD: a store writes no register.
+ */
+WE = RST                            /* r15 <- 0 - unfenced             */
+   # T0                             /* r15 <- PC+1 - unfenced:         */
+                                    /* the RTI-dispatch MVIOL window   */
+   # ST2 &  ST0                     /* TI0, TI2 - hardware writes      */
+   # ST2 &  ST1                     /* TI1, TI2 - hardware writes      */
+   # !UVIOL & ST2 & !ST1 & !ST0     /* T4 writeback KEEPS the fence    */
+   # !UVIOL & T2 & C1               /* ALU ops and LDI                 */
+   # !UVIOL & T2 & LDH
+   # !UVIOL & T2 & MOVI
+   # !UVIOL & T2 & ADJ
+   # !UVIOL & T2 & SH10 & !IR4 & !IR3 & !IR2 & IR1    /* SHR forms    */
+   # !UVIOL & T2 & SH10 & !IR4 & !IR3 & !IR2 & IR0
+   # !UVIOL & T2 & SH00 & COND      /* taken branch - see header       */
+   # !UVIOL & T2 & RTI              /* r15 <- r12                      */
+   # !UVIOL & T3 & LDSH             /* LD rd <- memory                 */
+   # !UVIOL & T3 & LDUPD;
+
+/*  WSEL0 and WSEL1 live on R16_STD.                                   */
+
+/* ================= port A address select =================
+ *   00 IR[3:0]   01 IR[8:5]   10 IR[12:9]   11 r15
+ */
+ASEL0 = T0                          /* r15 (with ASEL1)                */
+      # T2 & LDSH                   /* LD base @ [8:5]                 */
+      # T20 & SH00 & COND           /* r15 for the branch target - hz  */
+      # T2 & UPD                    /* pointer @ [8:5]                 */
+      # T40 & UPD                   /* hazard term, item 10            */
+      # T3 & STD                    /* store data rb @ [8:5]           */
+      # ST2 & ST0;                  /* TI0, TI2: r15                   */
+
+ASEL1 = T0
+      # T20 & SH00 & COND           /* r15 - hazard term, item 10      */
+      # T20 & LDH                   /* rd as source - hazard term      */
+      # T20 & ADJ                   /* hazard term                     */
+      # T2 & STI
+      # T20 & SH10 & !IR4 & !IR3 & IR2 & IR1   /* CMP family - hazard */
+      # T20 & SH10 & !IR4 & !IR3 & IR2 & IR0
+      # T20 & CMNCI                 /* hazard term                     */
+      # T20 & TSTI                  /* hazard term                     */
+      # T2 & STD                    /* store base @ [12:9]             */
+      # T3 & STUPD                  /* update-store data, rd via A     */
+      # ST2 & ST0;                  /* TI0, TI2: r15                   */
+
+/* ================= ALU function code =================
+ * 0 ADD  1 SUB  2 ADDC  3 SUBC  4 AND  5 OR  6 XOR  7 PASSA
+ * 8 PASSB  9 AINC  10 ZERO  11 LDH-split  12 ADEC  13-15 free
+ * ADD emits nothing, the stores' T2 included.  T1's don't-care falls
+ * to ADD; memory owns D.  Class-1 subop {IR14,IR13,IR4} maps
+ * 000..110 -> 0,2,1,3,4,5,6.  Reset: FC1 and FC3 assert on RST and
+ * FC0's fetch and hazard terms are !RST-gated, giving a clean FC=10 -
+ * see the header warning.
+ */
+FC0 = !RST & T20 & C1 & !IR14 & IR13       /* SUB, SUBC -> 1, 3 - hz  */
+    # !RST & T20 & C1 & IR14 & !IR13 & IR4 /* OR -> 5 - hazard term   */
+    # !RST & T20 & CMPI                    /* hazard term             */
+    # !RST & T20 & CMPCI                   /* hazard term             */
+    # !RST & T20 & TSTI             /* PASSA 7 - hazard term          */
+    # T2 & STI                      /* PASSA 7                        */
+    # T2 & POSTINC                  /* PASSA 7                        */
+    # T3 & STUPD                    /* PASSA 7                        */
+    # T3 & STD                      /* PASSA 7 - store data           */
+    # !RST & T20 & LDH              /* 11 - hazard term               */
+    # !RST & T0                     /* AINC 9 - the gate is required  */
+    # !RST & T40 & POSTINC          /* AINC 9 - hazard term          */
+    # ST2 & ST0;                    /* TI0 PASSA (7), TI2 AINC (9)   */
+
+FC1 = RST                           /* ZERO 10                        */
+    # T2 & C1 & !IR14 & IR4         /* ADDC, SUBC -> 2, 3             */
+    # T2 & C1 & IR14 & IR13 & !IR4  /* XOR -> 6                       */
+    # T2 & CMPCI                    /* 3                              */
+    # T2 & CMNCI                    /* 2                              */
+    # T2 & TSTI
+    # T2 & STI
+    # T2 & POSTINC
+    # T3 & STUPD
+    # T3 & STD                      /* PASSA 7 - store data           */
+    # T2 & LDH
+    # ST2 & !ST1 & ST0              /* TI0 PASSA (0111)               */
+    # ST2 & ST1 & !ST0;             /* TI1 ZERO (1010)                */
+
+FC2 = T2 & C1 & IR14 & !IR13        /* AND, OR -> 4, 5                */
+    # T2 & C1 & IR14 & IR13 & !IR4  /* XOR -> 6                       */
+    # T2 & TSTI
+    # T2 & STI
+    # T2 & UPD                      /* PASSA 7 or ADEC 12 - both set  */
+    # T3 & STUPD
+    # T3 & STD                      /* PASSA 7 - store data           */
+    # T4 & PREDEC                   /* ADEC 12                        */
+    # ST2 & !ST1 & ST0;             /* TI0 PASSA (0111)               */
+
+FC3 = RST                           /* ZERO 10                        */
+    # T0                            /* AINC 9 - RST overlap harmless  */
+    # T2 & LDI                      /* PASSB 8                        */
+    # T2 & MOVI                     /* 8                              */
+    # T2 & SH10 & !IR4 & !IR3 & !IR2 & IR1    /* SHR -> 8             */
+    # T2 & SH10 & !IR4 & !IR3 & !IR2 & IR0
+    # T2 & LDH                      /* 11                             */
+    # T2 & RTI                      /* PASSB 8 - the MOV path         */
+    # T3 & STI                      /* PASSB 8                        */
+    # T2 & PREDEC                   /* ADEC 12                        */
+    # T4 & UPD                      /* AINC 9 or ADEC 12 - both set   */
+    # ST2 & ST1;                    /* TI1 ZERO (10), TI2 AINC (9)    */

@@ -1,0 +1,152 @@
+Name      CLKV2_R16;
+PartNo    R16-25;
+Date      2026-10-12;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Clock v2 (Clock_v2_Module.md);
+Location  U1;
+Device    g22v10;
+
+/*  Reggie-16 Clock v2, the drop-in for v1's Clock board: the whole
+ *  generator in one GAL.  ATF22V10C-7PX, the part in v1's U19, every
+ *  output registered on the can (pin 1), so nothing on it changes
+ *  between can edges and no output can carry a runt.
+ *
+ *  Frame: a counter Q3-Q0 runs 0..7 (J2 open, /8) or 0..11 (J2
+ *  fitted, /12).  States outside the frame leave it in one edge.
+ *  SHP: high in the can period after any state below THR, THR = the
+ *  four DIP switches clamped to the frame less one, so CLK always has
+ *  a low phase.  THR = 0 parks CLK low: all switches open is safe.
+ *  CLKGEN: SHP one can period later.  It is high for exactly THR can
+ *  periods of the frame, rising entering state 2 and falling entering
+ *  state THR+2.  A pulse starts only at the edge from state 1, and HALT
+ *  can only stop it starting: once started it runs to SHP's fall.  So a
+ *  reset that clears HALT mid-frame waits for the next state 1, and a
+ *  request that lands on the sampling edge itself, where CLKGEN's and
+ *  HALT's product terms may read it differently, can neither cut a pulse
+ *  nor start a short one.
+ *  OSCGEN: half the frame high, rising half a frame before CLKGEN
+ *  rises and falling with it, so the F&C's /IRQ synchroniser, which
+ *  takes OSC's rising edge, settles PEND half a machine period before
+ *  the reload samples ENTRY.  Free-running: never gated, never reset.
+ *  HALT: a kernel HLT.  /HALTREQ is low only while the F&C's CLK is low
+ *  (its U28 mask), so it is sampled at the edge where CLKGEN would rise,
+ *  the edge from state 1: that rise does not happen, HALT sets, and the
+ *  machine stops in HLT's T2.  IE high ignores the request.  Only reset
+ *  clears HALT.
+ *  RELQ: the reset request synchronised, 1 = the DS1813 has released
+ *  and MEMRDY is high.  RSTN, the /RSTGEN net: 0 is reset.  It falls
+ *  at the edge after RELQ falls and rises only with a CLKGEN fall
+ *  (CLKGEN high, SHP low), so the T counter's clear has the whole
+ *  low phase before the next rise, and the F&C's decode what U4 and
+ *  U7 leave of it.  CLKGEN runs
+ *  through reset: the DS1813's 150 ms gives thousands of rises inside
+ *  it, each writing r15 = 0, so the first fetch is from 0.
+ *  Power-up: the 22V10 resets every register, RSTN = 0 among them, so
+ *  the machine is in reset before the can starts.
+ *
+ *  GATE: mechanically generated (reference model -> truth table ->
+ *  QMC -> emit); the emitted equations against the model at all
+ *  524,288 points of state and input, 0 mismatches outside the
+ *  declared don't-cares (SHP and OSCGEN in states outside the frame).
+ *  Cycle checks on the equations:
+ *  self-start from every power-up state with HALT clear, at every THR
+ *  and both frames; duty exactly min(THR, N-1)/N; OSCGEN's lead N/2;
+ *  reset at every phase, no CLKGEN pulse shortened, RSTN rising only
+ *  with a CLKGEN fall; a halt request from every state stops the rise
+ *  that ends its low phase and shortens no pulse; a halted board reset
+ *  at every phase, every pulse after the restart whole; a request on
+ *  the sampling edge read one way by CLKGEN and the other by HALT, no
+ *  short pulse either way.  The JEDEC in TTLSim's 22V10 model against
+ *  the equations: 300,000 can edges, 0 mismatches.
+ *  Term counts: Q0 2, Q1 4, Q2 3, Q3 3, SHP 16, CLKGEN 3, OSCGEN 5,
+ *  HALT 2, RELQ 1, RSTN 2.
+ *
+ *  Dialect: constant outputs are GND/VCC keywords, never number
+ *  literals.  Pins 11 and 13 unused, tied to GND in the capture.
+ */
+
+/* ---- clock + inputs, dedicated ---- */
+PIN  1 = CANCLK;                /* can, or CANIN by J1                 */
+PIN  2 = THR0;                  /* DIP 1                               */
+PIN  3 = THR1;                  /* DIP 2                               */
+PIN  4 = THR2;                  /* DIP 3                               */
+PIN  5 = THR3;                  /* DIP 4                               */
+PIN  6 = FRSEL;                 /* J2 fitted: the /12 frame            */
+PIN  7 = !HALTREQ;              /* H25.3, pulled up                    */
+PIN  8 = IE;                    /* H25.6, pulled down                  */
+PIN  9 = !SUPV;                 /* DS1813 /RST: the supervisor holds   */
+PIN 10 = MEMRDY;                /* H23.8, pulled up                    */
+
+/* ---- outputs, all registered ---- */
+PIN 14 = Q0;                    /*  8 avail,  2 used - probe           */
+PIN 15 = Q1;                    /* 10 avail,  4 used - probe           */
+PIN 16 = Q2;                    /* 12 avail,  3 used - probe           */
+PIN 17 = Q3;                    /* 14 avail,  3 used - probe           */
+PIN 18 = CLKGEN;                /* 16 avail,  3 used - T counter, tree */
+PIN 19 = SHP;                   /* 16 avail, 16 used - probe           */
+PIN 20 = OSCGEN;                /* 14 avail,  5 used - U7 to H24.3     */
+PIN 21 = HALT;                  /* 12 avail,  2 used - lamp, probe     */
+PIN 22 = RELQ;                  /* 10 avail,  1 used - probe           */
+PIN 23 = RSTN;                  /*  8 avail,  2 used - /RSTGEN         */
+
+/* ================= frame counter ================= */
+Q0.d = !Q0 & !Q2 & FRSEL
+     # !Q0 & !Q3;
+
+Q1.d = Q0 & !Q1 & !Q2 & FRSEL
+     # !Q0 & Q1 & !Q2 & FRSEL
+     # Q0 & !Q1 & !Q3
+     # !Q0 & Q1 & !Q3;
+
+Q2.d = Q0 & Q1 & !Q2 & !Q3
+     # !Q1 & Q2 & !Q3
+     # !Q0 & Q2 & !Q3;
+
+Q3.d = Q0 & Q1 & Q2 & !Q3 & FRSEL
+     # !Q1 & !Q2 & Q3 & FRSEL
+     # !Q0 & !Q2 & Q3 & FRSEL;
+
+/* ================= the duty compare ================= */
+/*  SHP.d = state < min(THR, N-1), over the current state.            */
+SHP.d = !Q0 & !Q1 & !Q2 & !Q3 & THR0
+      # !Q0 & !Q2 & !Q3 & THR0 & THR1
+      # !Q0 & !Q1 & Q2 & THR0 & THR2
+      # !Q0 & !Q3 & THR0 & THR1 & THR2
+      # !Q1 & !Q2 & !Q3 & THR1
+      # !Q1 & Q2 & THR1 & THR2
+      # !Q0 & !Q1 & THR0 & THR3
+      # !Q0 & THR0 & THR1 & THR3
+      # !Q2 & !Q3 & THR2
+      # !Q2 & !Q3 & THR3
+      # !Q0 & !Q3 & THR3
+      # !Q1 & Q2 & THR3
+      # !Q1 & THR1 & THR3
+      # !Q1 & THR2 & THR3
+      # !Q0 & THR2 & THR3
+      # Q2 & THR3 & FRSEL;
+
+/* ================= the machine clock ================= */
+/*  A pulse starts at the edge from state 1 and runs to SHP's fall.     */
+CLKGEN.d = Q0 & !Q1 & !Q2 & !Q3 & SHP & !HALT & !HALTREQ
+         # Q0 & !Q1 & !Q2 & !Q3 & SHP & !HALT & IE
+         # SHP & CLKGEN;
+
+/* ================= OSC: half a frame ahead ================= */
+/*  /8: high in states 6, 7, 0, 1.  /12: high in 8-11, 0, 1.          */
+OSCGEN.d = !Q0 & !Q1 & !Q2
+         # Q0 & Q2 & !FRSEL
+         # Q1 & Q2 & !FRSEL
+         # Q0 & Q1 & Q2
+         # Q3;
+
+/* ================= halt ================= */
+HALT.d = Q0 & !Q1 & !Q2 & !Q3 & SHP & RELQ & HALTREQ & !IE
+       # HALT & RELQ;
+
+/* ================= reset ================= */
+RELQ.d = !SUPV & MEMRDY;
+
+RSTN.d = !SHP & CLKGEN & RELQ
+       # RELQ & RSTN;

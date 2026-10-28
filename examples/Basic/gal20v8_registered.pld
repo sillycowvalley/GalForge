@@ -1,0 +1,43 @@
+Name      gal20v8_registered ;
+PartNo    TTLSIM20R ;
+Date      07/02/2026 ;
+Revision  01 ;
+Designer  TTLSim ;
+Company   TTLSim ;
+Assembly  None ;
+Location  ;
+Device    g20v8ms ;
+
+/* ------------------------------------------------------------------
+ * GAL20V8 -- REGISTERED mode  (mnemonic G20V8MS)
+ *
+ * Uses the dedicated control pins:
+ *   pin 1  = common clock  (rising edge)
+ *   pin 13 = common /OE    (active low, shared by all registered outputs)
+ *
+ * A 3-bit binary up-counter (q2 q1 q0) with a SYNCHRONOUS reset, plus
+ * one combinational output (carry) as a plain-I/O macrocell.
+ * ------------------------------------------------------------------ */
+
+/* control / inputs */
+PIN 1  = clk ;    /* global clock                    */
+PIN 13 = oe ;     /* global /OE (active low)          */
+PIN 2  = rst ;    /* synchronous reset, active high   */
+
+/* outputs */
+PIN 22 = q0 ;     /* registered */
+PIN 21 = q1 ;     /* registered */
+PIN 20 = q2 ;     /* registered */
+PIN 17 = carry ;  /* combinational terminal-count decode */
+
+q0.d = !q0 & !rst ;
+q1.d = (q1 $ q0) & !rst ;
+q2.d = (q2 $ (q1 & q0)) & !rst ;
+
+carry = q0 & q1 & q2 ;
+
+/* Expected next-state (on each rising edge of clk, rst=0):
+ *   q2q1q0 : 000 -> 001 -> 010 -> 011 -> 100 -> 101 -> 110 -> 111 -> 000
+ * With rst=1 the next state is 000 regardless of current state.
+ * carry = 1 only in state 111.
+ */

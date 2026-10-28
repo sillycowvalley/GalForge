@@ -1,0 +1,69 @@
+Name      GPIODEC_R16;
+PartNo    R16-29;
+Date      2026-10-24;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  GPIO card (GPIO_Module.md);
+Location  U1;
+Device    g22v10;
+
+/*  Reggie-16 GPIO card, the whole decode: two words of the I/O window
+ *  on a slot's buffered bus.  0x3FCD is the data word (written to the
+ *  output latch, read from the sixteen lines) and 0x3FC9 the direction
+ *  word (written to the direction register, read back from it).  One
+ *  owner per strobe: this device owns all four.  The board's own
+ *  decode leaves 0x3FC9 and 0x3FCD to the slots, and BUSWIN_R16's
+ *  A3 & A0 read term takes both reads out through the exit.
+ *
+ *  A 22V10 for the input width: full-address decode plus the slot's
+ *  two strobes is 18 inputs, twelve dedicated pins plus six macrocell
+ *  pins declared as inputs, which leaves four OLMCs: one strobe each,
+ *  one product term each.
+ *
+ *  BMEMRD_L and BMEMWR_L are the PIN LEVELS of the slot's active-low
+ *  strobes.  The '574 and '273 pairs clock on DATAWR's and DIRWR's
+ *  RISING edge - data captured as the write completes; DATARD and
+ *  DIRRD enable the '541 pairs onto BD for the length of the read.
+ *
+ *  Term counts: DATAWR 1, DIRWR 1, DATARD 1, DIRRD 1.
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = BMEMWR_L;              /* /BMEMWR pin level                   */
+PIN  2 = A0;
+PIN  3 = A1;
+PIN  4 = A2;
+PIN  5 = A3;
+PIN  6 = A4;
+PIN  7 = A5;
+PIN  8 = A6;
+PIN  9 = A7;
+PIN 10 = A8;
+PIN 11 = A9;
+PIN 13 = A10;
+
+/* ---- inputs on macrocell pins (used purely as inputs) ---- */
+PIN 14 = A11;
+PIN 15 = A12;
+PIN 16 = A13;
+PIN 17 = A14;
+PIN 18 = A15;
+PIN 19 = BMEMRD_L;              /* /BMEMRD pin level                   */
+
+/* ---- outputs ---- */
+PIN 20 = !DIRRD;                /* 14 avail, 1 used - direction '541s  */
+PIN 21 = !DATARD;               /* 12 avail, 1 used - line '541s       */
+PIN 22 = !DIRWR;                /* 10 avail, 1 used - '273 pair CLK    */
+PIN 23 = !DATAWR;               /*  8 avail, 1 used - '574 pair CLK    */
+
+/* ================= the window ================= */
+WINDOW = !A15 & !A14 & A13 & A12 & A11 & A10 & A9 & A8 & A7 & A6;
+DATA   = WINDOW & !A5 & !A4 & A3 & A2 & !A1 & A0;     /* 0x3FCD */
+DIR    = WINDOW & !A5 & !A4 & A3 & !A2 & !A1 & A0;    /* 0x3FC9 */
+
+/* ================= outputs ================= */
+DATAWR = DATA & !BMEMWR_L;
+DIRWR  = DIR & !BMEMWR_L;
+DATARD = DATA & !BMEMRD_L;
+DIRRD  = DIR & !BMEMRD_L;

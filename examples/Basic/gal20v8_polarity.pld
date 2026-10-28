@@ -1,0 +1,35 @@
+Name      gal20v8_polarity ;
+PartNo    TTLSIM20P ;
+Date      07/02/2026 ;
+Revision  01 ;
+Designer  TTLSim ;
+Company   TTLSim ;
+Assembly  None ;
+Location  ;
+Device    g20v8ms ;
+
+/*
+ * Output-polarity validation (registered mode) -- the two previously
+ * unvalidated corners in one design:
+ *   q1b : ACTIVE-LOW REGISTERED output, fed back into its own .d equation
+ *         and read by dec, so the gold reveals both the XOR fuse and the
+ *         feedback literal polarity for an active-low registered cell.
+ *   dec : ACTIVE-LOW COMBINATIONAL output inside registered mode (mode-3
+ *         combinational cell with an OE row), reading registered feedback.
+ * Expected pin behaviour:
+ *   q0 counts 0,1,0,1... while rst low; pin 21 shows NOT(q1b) where q1b is
+ *   a 2-bit counter's high bit; pin 17 shows NOT(q0 AND q1b).
+ */
+
+PIN 1  = clk ;
+PIN 13 = oe ;
+PIN 2  = rst ;
+
+PIN 22 = q0 ;
+PIN 21 = !q1b ;
+PIN 17 = !dec ;
+
+q0.d  = !q0 & !rst ;
+q1b.d = (q1b $ q0) & !rst ;
+
+dec   = q0 & q1b ;

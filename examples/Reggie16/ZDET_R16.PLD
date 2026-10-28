@@ -1,0 +1,103 @@
+Name      ZDET_R16;
+PartNo    R16-09;
+Date      2026-09-21;
+Revision  C;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  ALU16 (single-board 16-bit ALU);
+Location  U13;
+Device    g22v10;
+
+/*  Reggie-16 zero detect, FULL WORD in one device - and the post-shift
+ *  flag source.
+ *
+ *  Shift Z/N are POST-SHIFT (R16_Machine_Qualification.md finding M2).
+ *  The shifted result never exists as a bus this device can read - the
+ *  shift happens in the U23/U24 output drivers - but it is COMPUTABLE
+ *  from what this device already sees: the shifted word is F >> 1
+ *  with SRIN in bit 15.  So:
+ *
+ *      shifted-zero = !F15..!F1 & !SRIN        (F0 left into C)
+ *      shifted-sign = SRIN                     (the fill bit)
+ *
+ *  Rejected: pre-shift Z/N (flags of the source word) - the ISA reads
+ *  flags of the result, and post-shift costs no new ICs.
+ *
+ *  Two inputs (SRIN, /SOE - on the board at H8.6 and H8.8) and the
+ *  NSRC output steer between the plain and shifted forms.  ZERO muxes
+ *  in-place; the sign splits into TWO outputs because its consumers
+ *  genuinely differ:
+ *
+ *      BF15 (pin 22) = F15 always - the raw source sign, buffered so
+ *        raw F15 stays at four loads.  Sole consumer: the Flag Unit's
+ *        '153 SRIN leg via H11.4 (SHRA's fill IS the source sign;
+ *        feeding it NSRC would loop SRIN -> NSRC -> SRIN).
+ *      NSRC (pin 21) = F15, or SRIN under /SOE - the N-capture
+ *        source.  Consumers: U25.4 (bank-0 NLAT) and H11.7 to the
+ *        Flag Unit's U5.4 (bank-1 NLAT).
+ *
+ *  Timing: SRIN and /SOE are settled long before F (latched-flag mux
+ *  and T2 decode respectively), so ZERO and NSRC are one GAL transit
+ *  from F-settle - no new pole.
+ *  Bench caveat (J1's note): pulling /SOE low to test the shift
+ *  drivers also swaps the Z/N sources, not just the C source.
+ *
+ *  Inputs are the '181s' raw F outputs (LS levels).  F0-F11 on the
+ *  twelve dedicated input pins; F12-F15 on OLMC pins 14-17 and SRIN
+ *  and /SOE on OLMC pins 18-19 - all DECLARED as inputs (the
+ *  documented-safe pattern, R16_COND precedent).
+ *
+ *  GATE: exhaustive 262,144-row sweep (2^18) of all three equations
+ *  against the reference forms - run it before burn; BlinkyJED
+ *  compiles the burn and its output is the artefact of record.
+ *  Verified: ALU16 capture bench tb-alu16a, 226/226 rows, 3,819
+ *  assertions, 0 faults; rows 206-226 discriminate
+ *  pre-shift from post-shift flags and cover the BF15/NSRC split.
+ *
+ *  Term counts: ZERO 2, NSRC 2, BF15 1.  Pin 20 spare.
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = F0;                    /* raw F, LS levels                    */
+PIN  2 = F1;
+PIN  3 = F2;
+PIN  4 = F3;
+PIN  5 = F4;
+PIN  6 = F5;
+PIN  7 = F6;
+PIN  8 = F7;
+PIN  9 = F8;
+PIN 10 = F9;
+PIN 11 = F10;
+PIN 13 = F11;
+
+/* ---- inputs on macrocell pins ---- */
+PIN 14 = F12;
+PIN 15 = F13;
+PIN 16 = F14;
+PIN 17 = F15;
+PIN 18 = SRIN;                  /* shifter fill bit, Flag Unit U8 out  */
+PIN 19 = SOE_L;                 /* /SOE pin level (low = shift drives) */
+
+/* ---- outputs ---- */
+PIN 21 = NSRC;                  /* N-capture source: F15, or SRIN when shifting */
+PIN 22 = BF15;                  /* buffered F15 ALWAYS - the SRIN-leg export    */
+PIN 23 = ZERO;                  /* active high: result == 0, post-shift aware   */
+/* pin 20 spare                                                        */
+
+/* ================= strobe as positive node ================= */
+SOE = !SOE_L;
+
+/* ================= zero detect ================= */
+/*  Plain: F == 0.  Shifting: the shifted word is zero - F[15:1] all
+ *  clear and the fill clear; F0 is excluded, it left into C.          */
+ZERO = !SOE & !F0 & !F1 & !F2  & !F3  & !F4  & !F5  & !F6  & !F7
+            & !F8 & !F9 & !F10 & !F11 & !F12 & !F13 & !F14 & !F15
+     #  SOE        & !F1 & !F2  & !F3  & !F4  & !F5  & !F6  & !F7
+            & !F8 & !F9 & !F10 & !F11 & !F12 & !F13 & !F14 & !F15 & !SRIN;
+
+/* ================= sign sources ================= */
+NSRC = !SOE & F15
+     #  SOE & SRIN;
+
+BF15 = F15;

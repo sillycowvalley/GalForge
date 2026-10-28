@@ -1,0 +1,97 @@
+Name      IODEC_R16;
+PartNo    R16-12;
+Date      2026-09-14;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Peripheral board (Peripheral_Board.md);
+Location  U1;
+Device    g22v10;
+
+/*  Reggie-16 peripheral board, window side of the decode pair: the
+ *  I/O window match, the UART chip select, and the high-byte-zero
+ *  driver enable.
+ *  Peripheral_Board.md owns the window map and the seams; CFDEC_R16
+ *  (U2) owns every timer and CF strobe, fed from this device's
+ *  /IOWIN.
+ *
+ *  THE SPLIT: one 22V10 cannot own this board's decode.  Eleven
+ *  strobes against ten OLMCs, and full-address decode plus both bus
+ *  strobes is 18 inputs against 22 signal pins - either bound alone
+ *  forces two devices.  The cut is by what each device must SEE, not
+ *  strictly by block: this device sees A[15:0] and /MEMRD and owns the
+ *  full-address terms; CFDEC_R16 sees /IOWIN + A[5:0] + both strobes
+ *  and owns the nine block strobes.  One owner per strobe.
+ *
+ *  The window is 0x3FC0-0x3FFF (A[15:14] = 00, A[13:6] all ones);
+ *  THIS BOARD CLAIMS ONLY 0x3FC0-0x3FEF.  IOWIN excludes the top 16
+ *  words (A5 & A4) so the MMU board's control block at 0x3FF0 has one
+ *  decode owner across two captures - the 0x3FEF ceiling contract
+ *  clause, enforced structurally rather than by discipline.
+ *
+ *  ZEROEN drives the shared '541 zeroing D[15:8]: every UART register
+ *  read (all 16550 registers are 8-bit) plus the TMRSTA read at
+ *  0x3FC8, zero-extended in hardware.  It
+ *  must NOT fire on TMRLO/TMRHI (full 16-bit reads) nor anywhere in
+ *  CF's blocks (the data register is a real 16-bit port; the CF
+ *  driver masks in software - CF_Module.md).  All exclusions hold by
+ *  construction: the TMRSTA term is an exact address, and
+ *  no term covers offset 0x10 upward.
+ *
+ *  UARTCS is address-only - the 16550 does its own A[2:0] register
+ *  select and takes /MEMRD and /MEMWR directly on its active-low
+ *  strobes, pins 21 and 18; the active-high duplicates, pins 22
+ *  and 19, are tied to GND.
+ *
+ *  MEMRD_L is the PIN LEVEL of the active-low strobe.
+ *
+ *  Draft check: equations swept exhaustively against the window map
+ *  (2^17 rows, A[15:0] x MEMRD) - 0 mismatches.  BlinkyJED compile
+ *  and parse-back is the ratifying gate; its output is the artefact
+ *  of record.  Pin assignment matches R16_Peripheral.ttlproj.
+ *
+ *  Term counts: IOWIN 2, ZEROEN 2, UARTCS 1.
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = MEMRD_L;               /* /MEMRD pin level                    */
+PIN  2 = A0;
+PIN  3 = A1;
+PIN  4 = A2;
+PIN  5 = A3;
+PIN  6 = A4;
+PIN  7 = A5;
+PIN  8 = A6;
+PIN  9 = A7;
+PIN 10 = A8;
+PIN 11 = A9;
+PIN 13 = A10;
+
+/* ---- inputs on macrocell pins (used purely as inputs) ---- */
+PIN 14 = A11;
+PIN 15 = A12;
+PIN 16 = A13;
+PIN 17 = A14;
+PIN 18 = A15;
+
+/* ---- outputs ---- */
+/*  Pins 19 and 20 spare OLMCs (16 and 14 terms, the two largest),
+ *  unconnected in the capture - the board's full-size spares.        */
+PIN 21 = !IOWIN;                /* 12 avail, 2 used - to CFDEC_R16     */
+PIN 22 = !ZEROEN;               /* 10 avail, 2 used - '541 /G1         */
+PIN 23 = !UARTCS;               /*  8 avail, 1 used - 16550 /CS2       */
+
+/* ================= the window ================= */
+WINDOW = !A15 & !A14 & A13 & A12 & A11 & A10 & A9 & A8 & A7 & A6;
+
+/* ================= outputs ================= */
+/*  0x3FC0-0x3FEF: the window minus the MMU board's 16 words.          */
+IOWIN  = WINDOW & !A5
+       # WINDOW & !A4;
+
+/*  UART block, 0x3FC0-0x3FC7, address-only.                           */
+UARTCS = WINDOW & !A5 & !A4 & !A3;
+
+/*  UART reads (any register) # TMRSTA read (0x3FC8).                  */
+ZEROEN = WINDOW & !A5 & !A4 & !A3 & !MEMRD_L
+       # WINDOW & !A5 & !A4 &  A3 & !A2 & !A1 & !A0 & !MEMRD_L;

@@ -1,0 +1,74 @@
+Name      VBUS_R16;
+PartNo    R16-31;
+Date      2026-10-27;
+Revision  A;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Video card (Video_Card.md);
+Location  U1;
+Device    g22v10;
+
+/*  Reggie-16 video card, the bus decode: four registers in the 8-word
+ *  block 0x3FE0-0x3FE7 on a slot's buffered bus.  A2 is ignored, so the
+ *  four alias once at 0x3FE4-0x3FE7 (Video_Card.md, Register map):
+ *      0x3FE0  VADDR  write   /WRL and /ADDRLD
+ *      0x3FE1  VDATA  write   /WRL;  read  /DATARD
+ *      0x3FE2  VCTRL  write   /CTRLWR
+ *      0x3FE3  VCURS  write   /CURWR
+ *  /WRL clocks the write latch for both VADDR and VDATA, so the latch
+ *  holds the word whichever was written; /ADDRLD tells VARB_R16 a load
+ *  from a store.  One owner per strobe: this device owns all five.
+ *
+ *  Seventeen inputs (A15-A3, A1, A0 and the two strobes): twelve
+ *  dedicated pins plus five macrocell pins declared as inputs, which
+ *  leaves five OLMCs, one strobe each, one product term each.  All 22
+ *  signal pins are used.
+ *
+ *  BMEMRD_L and BMEMWR_L are the PIN LEVELS of the slot's active-low
+ *  strobes.  The latches and registers clock on a strobe's RISING edge,
+ *  as the store completes.
+ *
+ *  Term counts: WRL 1, ADDRLD 1, DATARD 1, CTRLWR 1, CURWR 1.
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = BMEMWR_L;              /* /BMEMWR pin level                   */
+PIN  2 = A0;
+PIN  3 = A1;
+PIN  4 = A3;
+PIN  5 = A4;
+PIN  6 = A5;
+PIN  7 = A6;
+PIN  8 = A7;
+PIN  9 = A8;
+PIN 10 = A9;
+PIN 11 = A10;
+PIN 13 = A11;
+
+/* ---- inputs on macrocell pins (used purely as inputs) ---- */
+PIN 14 = A12;
+PIN 15 = A13;
+PIN 16 = A14;
+PIN 17 = A15;
+PIN 18 = BMEMRD_L;              /* /BMEMRD pin level                   */
+
+/* ---- outputs ---- */
+PIN 19 = !CURWR;                /* 16 avail, 1 used - cursor '574s,    */
+                                /*   the blink counter's clear         */
+PIN 20 = !CTRLWR;               /* 14 avail, 1 used - holding '574,    */
+                                /*   display enable '74                */
+PIN 21 = !DATARD;               /* 12 avail, 1 used - read latch /OE   */
+PIN 22 = !ADDRLD;               /* 10 avail, 1 used - VARB_R16         */
+PIN 23 = !WRL;                  /*  8 avail, 1 used - write latch CLK, */
+                                /*   VARB_R16                          */
+
+/* ================= the block, 0x3FE0-0x3FE7 ================= */
+BLOCK  = !A15 & !A14 & A13 & A12 & A11 & A10 & A9 & A8 & A7 & A6
+       & A5 & !A4 & !A3;
+
+/* ================= outputs ================= */
+WRL    = BLOCK & !A1 & !BMEMWR_L;
+ADDRLD = BLOCK & !A1 & !A0 & !BMEMWR_L;
+DATARD = BLOCK & !A1 & A0 & !BMEMRD_L;
+CTRLWR = BLOCK & A1 & !A0 & !BMEMWR_L;
+CURWR  = BLOCK & A1 & A0 & !BMEMWR_L;

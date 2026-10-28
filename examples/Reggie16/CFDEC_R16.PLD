@@ -1,0 +1,137 @@
+Name      CFDEC_R16;
+PartNo    R16-13;
+Date      2026-10-17;
+Revision  C;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  Peripheral board (Peripheral_Board.md);
+Location  U2;
+Device    g22v10;
+
+/*  Reggie-16 peripheral board, block side of the decode pair: the
+ *  tick's two strobes and the CF task file's three, every one the AND
+ *  of its register decode with the corresponding bus strobe, all fed
+ *  from IODEC_R16's /IOWIN (0x3FC0-0x3FEF; the 0x3FEF ceiling is
+ *  enforced upstream).  IODEC_R16's header carries the split
+ *  rationale; this device never sees A[15:6].
+ *
+ *  Offsets below are A[5:0] within the window (Peripheral_Board.md
+ *  map, where the block bases are final):
+ *      0x08  TMRSTA read   / TMRACK write     (0x3FC8)
+ *      0x10-0x17  CF task file, /CS0          (0x3FD0-0x3FD7)
+ *  Nothing else in the window strobes.  0x09-0x0B and 0x18-0x1F are
+ *  free for a card that decodes them itself (Peripheral_Board.md,
+ *  Free words): TMRSTA's unpaired senses, the counter's three ports
+ *  and the CF control block produce no strobe at all.
+ *
+ *  HELD OUTPUTS.  /TMRCAPWR, /TMRLORD and /TMRHIRD reach the counter's
+ *  sockets, U5-U8, which the machine leaves empty (Timer_Module.md,
+ *  Rejected alternatives: a readable counter); /CS1 reaches IDE 38,
+ *  and nothing reads the control block it selects (CF_Module.md,
+ *  Register interface).  Each is driven high, inactive, rather than
+ *  released: the capture carries the '590s, and a released /G would
+ *  float.  Their OLMCs are spare in all but copper.
+ *
+ *  CS0 is address-level (the card qualifies internally with DIOR/DIOW,
+ *  exactly as the 16550 does with its strobes); DIOR and DIOW cover the
+ *  task file alone and carry the bus strobe.  The '245 pair's DIR rides
+ *  /DIOR and their /OE is grounded (CF_Module.md), so /DIOR is what
+ *  puts the card on D: it fires nowhere outside 0x3FD0-0x3FD7.
+ *
+ *  TICKPEND RESET.  /TMRACKWR also asserts whenever RST is high, and
+ *  RST comes in on pin 11.  TICKPEND - U9 section A - has D tied high,
+ *  /PRE tied high, and /CLR tied to /TMRACKWR and NOTHING ELSE.
+ *  /RST_P reaches U14 and H9.1; RST reaches U3, U14 and H7.2; neither
+ *  reaches U9.  Without the reset term the flop powers up undefined
+ *  and only a CPU write to TMRACK can clear it: a cold start can come
+ *  up with a tick already pending and the first EI takes a spurious
+ *  interrupt, before the timer is configured and before the ISR
+ *  vector is installed - indistinguishable from a real early tick.
+ *
+ *  The reset lives in this equation rather than in copper because
+ *  /TMRACKWR has exactly ONE consumer - U9 pin 1 - so widening it
+ *  cannot have a side effect anywhere else on the board.  Asserting it
+ *  through reset holds TICKPEND cleared until the machine is running:
+ *  the flop is defined from the first instruction rather than from the
+ *  first acknowledge.
+ *
+ *  Pin 11 is the right home for RST and pin 1 is not: pin 1 is the
+ *  strobe-stretch provision's CLK, reserved below.
+ *
+ *  STROBE-STRETCH PROVISION (CF_Module.md, PIO-0 timing): pin 23's
+ *  OLMC is the reserved spare.  If the Stage-1 sweep demands the
+ *  two-cycle stretch, it becomes the registered leg - pin 1 then
+ *  becomes CLK instead of a grounded unused input (a capture change),
+ *  and DIOR/DIOW pick up the stretch terms.  Costs terms, not
+ *  silicon - the reason this board owns its own strobe generation.
+ *  Pin 23 and pin 1 are both free.
+ *
+ *  MEMRD_L / MEMWR_L / IOWIN_L are the PIN LEVELS of the active-low
+ *  nets /MEMRD, /MEMWR, /IOWIN.  RST is active HIGH.
+ *
+ *  GATE: with RST low, the compiled JEDEC swept exhaustively against
+ *  the map above (2^10 rows), then composed with IODEC_R16's over the
+ *  full 2^18 address-and-strobe space: every strobe fires exactly on
+ *  its documented addresses, the four held outputs never, nothing at
+ *  or above 0x3FF0, nothing with A14 or A15 high - 0 mismatches.  With
+ *  RST high, TMRACKWR asserts on every row and no other output differs
+ *  from its RST-low value.  Checksum 5908, carried by
+ *  R16_Peripheral.ttlproj and R16_4MHz_Board.ttlproj
+ *  (Peripheral_Board.md).  BlinkyJED compile and parse-back is the
+ *  ratifying gate; its output is the artefact of record.  Pin
+ *  assignment matches R16_Peripheral.ttlproj.
+ *
+ *  Term counts: TMRSTARD, CS0, DIOR and DIOW one product term each,
+ *  TMRACKWR two, the four held outputs none.
+ */
+
+/* ---- inputs, dedicated ---- */
+/*  Pin 1 unused, tied to GND in the capture - see the stretch
+ *  provision above before repurposing.  Pin 13 is J7's common: J7
+ *  straps it to GND or to IORDY; no equation uses it yet.            */
+PIN  2 = IOWIN_L;               /* /IOWIN from IODEC_R16 pin 21        */
+PIN  3 = A0;
+PIN  4 = A1;
+PIN  5 = A2;
+PIN  6 = A3;
+PIN  7 = A4;
+PIN  8 = A5;
+PIN  9 = MEMRD_L;               /* /MEMRD pin level                    */
+PIN 10 = MEMWR_L;               /* /MEMWR pin level                    */
+PIN 11 = RST;                   /* active high, H7.2                   */
+
+/* ---- outputs ---- */
+/*  Pin 23 spare OLMC - the strobe-stretch reservation.                */
+PIN 14 = !DIOW;                 /*  8 avail, 1 used - IDE 23           */
+PIN 15 = !DIOR;                 /* 10 avail, 1 used - IDE 25, '245 DIR */
+PIN 16 = !CS1;                  /* 12 avail, held - IDE 38, 10k PU     */
+PIN 17 = !CS0;                  /* 14 avail, 1 used - IDE 37, 10k PU   */
+PIN 18 = !TMRHIRD;              /* 16 avail, held - '590 U7/U8 /G      */
+PIN 19 = !TMRLORD;              /* 16 avail, held - '590 U5/U6 /G      */
+PIN 20 = !TMRCAPWR;             /* 14 avail, held - '590 x4 RCK        */
+PIN 21 = !TMRACKWR;             /* 12 avail, 2 used - '74 /1CLR        */
+PIN 22 = !TMRSTARD;             /* 10 avail, 1 used - '541 /G1         */
+
+/* ================= common ================= */
+IOWIN = !IOWIN_L;
+RD    = !MEMRD_L;
+WR    = !MEMWR_L;
+
+/* ================= the tick, 0x3FC8 ================= */
+TMRSTARD = IOWIN & !A5 & !A4 &  A3 & !A2 & !A1 & !A0 & RD;
+
+/*  The acknowledge strobe doubles as TICKPEND's reset - see TICKPEND
+ *  RESET in the header.  U9 pin 1 is its only consumer.              */
+TMRACKWR = IOWIN & !A5 & !A4 &  A3 & !A2 & !A1 & !A0 & WR
+         # RST;
+
+/* ================= CF task file, 0x3FD0-0x3FD7 ================= */
+CS0  = IOWIN & !A5 &  A4 & !A3;
+DIOR = IOWIN & !A5 &  A4 & !A3 & RD;
+DIOW = IOWIN & !A5 &  A4 & !A3 & WR;
+
+/* ================= held high - see HELD OUTPUTS ================= */
+TMRCAPWR = GND;
+TMRLORD  = GND;
+TMRHIRD  = GND;
+CS1      = GND;

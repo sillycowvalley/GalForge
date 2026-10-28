@@ -1,0 +1,98 @@
+Name      BUSWIN_R16;
+PartNo    R16-28;
+Date      2026-10-23;
+Revision  C;
+Designer  Reggie-16;
+Company   The Bounceworks;
+Assembly  4 MHz board (Reggie16_Proposed_v2.md section 7);
+Location  U806;
+Device    g22v10;
+
+/*  Reggie-16 4 MHz board, the peripheral-bus exit's window decode and
+ *  the tick's two strobes.  The exit drives A and the strobes onto the
+ *  bus always, through '541s; D crosses through a '245 pair only inside
+ *  the I/O window, 0x3FC0-0x3FFF, turned toward the board by /MEMRD on
+ *  the pair's DIR, and enabled by /BUSEN from here.
+ *
+ *  /BUSEN asserts for every write in the window, and for every read in
+ *  it but the board's own ports, whose drivers are on the board's D:
+ *      0x3FC0-0x3FC7  UART 0, the 16550, on the board
+ *                     (Peripheral_Board.md)
+ *      0x3FC8         TMRSTA, the tick's one read
+ *      0x3FCC         the cause port (R16_CAUSE, exactly 0x3FCC)
+ *      0x3FD0-0x3FD7  the CompactFlash task file, on the board too
+ *      0x3FF0-0x3FFF  the MMU's control block (MAPDEC_R16's /CTLWE,
+ *                     low nibble ignored; write-only, so nothing on
+ *                     the board answers a read there, and no card
+ *                     decodes it: IODEC_R16's ceiling is 0x3FEF)
+ *  A write to one of them still crosses: the cards ignore it by their
+ *  own decode.  0x3FC9-0x3FCB cross both ways: the board has no
+ *  counter, and the words are free for a card (Peripheral_Board.md,
+ *  Free words).
+ *
+ *  OWNOK is the complement of the five over A[5:0], minimised by
+ *  hand (BlinkyJED flattens, it does not minimise):
+ *      A5 & !A4                    0x20-0x2F, no port of the board's
+ *      !A5 & A4 & A3               0x18-0x1F
+ *      !A5 & !A4 & A3 & A1         0x0A, 0x0B, 0x0E, 0x0F
+ *      !A5 & !A4 & A3 & A0         0x09, 0x0B, 0x0D, 0x0F
+ *  so BUSEN is five terms.
+ *
+ *  TMRSTARD and TMRACKWR are CFDEC_R16's, on the board's window: the
+ *  status read and the acknowledge write at 0x3FC8 exactly.  The
+ *  acknowledge doubles as TICKPEND's reset, asserting whenever RST is
+ *  high (CFDEC_R16, TICKPEND RESET): '74 /CLR is its only consumer.
+ *
+ *  All 22 signal pins are used: A[15:4] on the twelve dedicated
+ *  inputs, A[3:0], /MEMRD, /MEMWR and RST on OLMC pins declared as
+ *  inputs, the three outputs on 16, 16 and 8-term OLMCs.
+ *  MEMRD_L and MEMWR_L are the PIN LEVELS of the active-low strobes;
+ *  RST is active high.
+ *  Term counts: BUSEN 5, TMRSTARD 1, TMRACKWR 2.
+ */
+
+/* ---- inputs, dedicated ---- */
+PIN  1 = A15;
+PIN  2 = A14;
+PIN  3 = A13;
+PIN  4 = A12;
+PIN  5 = A11;
+PIN  6 = A10;
+PIN  7 = A9;
+PIN  8 = A8;
+PIN  9 = A7;
+PIN 10 = A6;
+PIN 11 = A5;
+PIN 13 = A4;
+
+/* ---- inputs, on OLMC pins ---- */
+PIN 14 = A3;
+PIN 15 = A2;
+PIN 16 = A1;
+PIN 17 = A0;
+PIN 20 = MEMRD_L;               /* /MEMRD pin level                    */
+PIN 21 = MEMWR_L;               /* /MEMWR pin level                    */
+PIN 22 = RST;                   /* active high                         */
+
+/* ---- outputs ---- */
+PIN 18 = !TMRSTARD;             /* 16 avail, 1 used - '541 pair /OE    */
+PIN 19 = !BUSEN;                /* 16 avail, 6 used - '245 pair /OE    */
+PIN 23 = !TMRACKWR;             /*  8 avail, 2 used - '74 /CLR         */
+
+/* ================= common ================= */
+WIN   = !A15 & !A14 & A13 & A12 & A11 & A10 & A9 & A8 & A7 & A6;
+RD    = !MEMRD_L;
+WR    = !MEMWR_L;
+TMR   = !A5 & !A4 & A3 & !A2 & !A1 & !A0;
+
+/* ================= the exit ================= */
+BUSEN = WIN & WR
+      # WIN & RD &  A5 & !A4
+      # WIN & RD & !A5 &  A4 &  A3
+      # WIN & RD & !A5 & !A4 &  A3 &  A1
+      # WIN & RD & !A5 & !A4 &  A3 &  A0;
+
+/* ================= the tick, 0x3FC8 ================= */
+TMRSTARD = WIN & TMR & RD;
+TMRACKWR = WIN & TMR & WR
+         # RST;
