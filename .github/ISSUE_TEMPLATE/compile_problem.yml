@@ -1,0 +1,44 @@
+name: A design doesn't compile, or compiles wrong
+description: GalForge refuses a design it should take, or the chip doesn't do what the source says.
+labels: [bug]
+body:
+  - type: textarea
+    id: source
+    attributes:
+      label: The .pld source
+      description: Paste the whole file, or attach it (rename it to .txt if GitHub refuses .pld).
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: What GalForge printed
+      description: Everything from the command, errors and fit report included.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: The behaviour you wanted, or which output misbehaves on the chip and how.
+    validations:
+      required: true
+  - type: input
+    id: part
+    attributes:
+      label: Part and programmer
+      placeholder: e.g. ATF22V10C-15PU on a T48 with Xgpro 13.16
+  - type: textarea
+    id: wincupl
+    attributes:
+      label: WinCUPL's .jed for the same source, if you have one
+      description: Attach it. A WinCUPL fuse map is the quickest way to find a difference.
+  - type: input
+    id: version
+    attributes:
+      label: GalForge version
+      description: What `galforge --version` prints.
+    validations:
+      required: true

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Reference manual
+    url: https://github.com/sillycowvalley/GalForge/blob/main/docs/GalForge_Manual.md
+    about: The language GalForge accepts, every error message, and the fuse maps of all three parts.

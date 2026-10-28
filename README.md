@@ -1,5 +1,7 @@
 # GalForge
 
+[![build](https://github.com/sillycowvalley/GalForge/actions/workflows/build.yml/badge.svg)](https://github.com/sillycowvalley/GalForge/actions/workflows/build.yml)
+
 **A small, readable CUPL compiler for the GAL16V8, GAL20V8 and GAL22V10.**
 
 GalForge turns a CUPL-style `.pld` file into a JEDEC `.jed` fuse map you can burn into a
@@ -12,8 +14,8 @@ Why another one? WinCUPL still works, mostly, but it is a 1990s Windows program 
 no longer maintained, its error messages are cryptic, and it will happily compile a design
 that does not do what you meant. GalForge is about 2,000 lines of C# you can read in an
 evening, runs anywhere .NET runs, refuses ambiguous input with a plain message, and
-programs the same logic as WinCUPL: every example in this repository is checked against a
-WinCUPL 5.0a fuse map on every build.
+programs the same logic as WinCUPL: an example of every mode of every part is checked
+against a WinCUPL 5.0a fuse map on every build.
 
 It has built every GAL in [Reggie-16](examples/Reggie16), a 16-bit TTL computer with 35
 programmable parts on it.
@@ -24,6 +26,13 @@ Download `galforge-<version>-win-x64.exe` from the
 [Releases](https://github.com/sillycowvalley/GalForge/releases) page and rename it
 `galforge.exe`. It is one self-contained file: there is nothing to install. Linux and macOS
 builds sit beside it.
+
+If you have the .NET 8 SDK, it also installs as a .NET tool, which puts `galforge` on your
+path and updates with one command:
+
+```
+dotnet tool install -g GalForge
+```
 
 To build it yourself, open `GalForge.sln` in Visual Studio 2022 and build; Test Explorer
 runs the tests. Right-click the GalForge project and choose Publish to make the single
@@ -130,6 +139,13 @@ GalForge follows the CUPL language of WinCUPL (Microchip, formerly Atmel and Log
 Devices). The fuse maps are those of the Lattice GAL data sheets; GALasm and its
 predecessor GALer by Christian Habermann, and Galette by Simon Frankau, are where the
 author first read and checked them.
+
+## Reporting a problem
+
+If GalForge refuses a design it should take, or a chip doesn't do what its source says,
+[open an issue](https://github.com/sillycowvalley/GalForge/issues/new/choose): the form
+asks for what's needed to reproduce it. [CONTRIBUTING.md](CONTRIBUTING.md) covers building,
+testing and pull requests.
 
 ## Licence
 

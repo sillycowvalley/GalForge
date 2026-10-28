@@ -47,6 +47,18 @@ public class CommandLineTests
     }
 
     [TestMethod]
+    public void APinDeclaredAsAnInputIsNotSpare()
+    {
+        // LEDDEC_R16 takes A11..A15 on the output-capable pins 14..18 and
+        // drives only pin 23.
+        string pld = Path.Combine(work, "LEDDEC_R16.PLD");
+        File.Copy(Path.Combine(Repo.Examples("Reggie16"), "LEDDEC_R16.PLD"), pld);
+        var r = Run(pld);
+        Assert.AreEqual(0, r.Exit, r.Err);
+        StringAssert.Contains(r.Out, "  Spare output pins: 19, 20, 21, 22" + Environment.NewLine);
+    }
+
+    [TestMethod]
     public void OutputCanNameAFile()
     {
         string pld = CopyExample("gal16v8_simple.pld");

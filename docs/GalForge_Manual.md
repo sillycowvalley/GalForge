@@ -612,7 +612,9 @@ cannot drift from the JEDEC:
 | **OE** | `term` if the output has a `.oe`, else `-` |
 
 The **Max** column is read from the compiled map itself (SYN/AC0 for the V8), so it reflects
-the mode the compiler actually chose. Spare output-capable pins are listed at the end.
+the mode the compiler actually chose. Output-capable pins that no PIN declaration names are
+listed at the end as spare; a pin declared as an input is in use, though no equation drives
+it.
 
 ---
 

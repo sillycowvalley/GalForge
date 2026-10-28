@@ -1,5 +1,7 @@
-# A tag such as v1.0.0 builds single-file executables and attaches them to
-# a GitHub Release of that name.
+# A tag such as v1.0.0 builds single-file executables and the dotnet tool
+# package, and attaches them to the GitHub Release of that name: the one
+# drafted on GitHub's Releases page, or a new one if none exists. With a
+# NUGET_API_KEY repository secret it also publishes the tool to nuget.org.
 name: release
 
 on:
@@ -30,7 +32,22 @@ jobs:
           cp out/win-x64/galforge.exe "dist/galforge-$version-win-x64.exe"
           cp out/linux-x64/galforge "dist/galforge-$version-linux-x64"
           cp out/osx-arm64/galforge "dist/galforge-$version-osx-arm64"
+          dotnet pack src/GalForge/GalForge.csproj -c Release -p:Version="$version" -o dist
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --title "GalForge $GITHUB_REF_NAME" --generate-notes
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --title "GalForge $GITHUB_REF_NAME" --generate-notes
+          fi
+      - name: NuGet
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -n "$NUGET_API_KEY" ]; then
+            dotnet nuget push dist/*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+          else
+            echo "No NUGET_API_KEY secret: the .nupkg is on the release for uploading by hand."
+          fi

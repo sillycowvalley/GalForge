@@ -14,7 +14,7 @@ namespace GalForge;
 ///     .pld source
 ///        -> PldParser.Parse      (tokens -> pin map + boolean equations)
 ///        -> TargetDevice.Resolve (G16V8 / G20V8 / G22V10)
-///        -> Compiler.Compile     (SOP build + minimise + map to fuse array)
+///        -> Compiler.Compile     (SOP build + map to fuse array)
 ///        -> JedecWriter.Write     (fuse map -> JESD3 .jed text)
 ///     .jed output
 ///
@@ -196,8 +196,8 @@ internal static class Program
     /// <summary>
     /// Post-compile fit report: per-output product-term usage against the
     /// macrocell's budget, output kind and effective polarity, plus the spare
-    /// output-capable pins. Generated from the same parsed document the fuse
-    /// map came from, so it cannot drift from the JEDEC.
+    /// output-capable pins no PIN declaration claims. Generated from the same
+    /// parsed document the fuse map came from, so it cannot drift from the JEDEC.
     /// </summary>
     private static void PrintFitReport(PldDocument doc, TargetDevice device, FuseMapBase fuses, TextWriter stdout)
     {
@@ -244,9 +244,13 @@ internal static class Program
                 $"{(oeTargets.Contains(eq.Target) ? "term" : "-")}");
         }
 
+        // A pin is spare only if nothing claims it: an output-capable pin
+        // declared as an input is in use even though no equation drives it.
+        var declared = new HashSet<int>();
+        foreach (PinDeclaration p in doc.Pins) declared.Add(p.Number);
         var spares = new List<int>();
         for (int p = firstPin; p <= lastPin; p++)
-            if (!driven.Contains(p)) spares.Add(p);
+            if (!driven.Contains(p) && !declared.Contains(p)) spares.Add(p);
         if (spares.Count > 0)
             stdout.WriteLine($"  Spare output pins: {string.Join(", ", spares)}");
     }

@@ -13,10 +13,24 @@
         <Product>GalForge</Product>
         <Description>CUPL-subset logic compiler for GAL16V8, GAL20V8 and GAL22V10.</Description>
         <Copyright>Copyright (c) 2026 sillycowvalley</Copyright>
+        <Authors>sillycowvalley</Authors>
+    </PropertyGroup>
+
+    <!-- dotnet tool install -g GalForge -->
+    <PropertyGroup>
+        <PackAsTool>true</PackAsTool>
+        <ToolCommandName>galforge</ToolCommandName>
+        <PackageId>GalForge</PackageId>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageProjectUrl>https://github.com/sillycowvalley/GalForge</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/sillycowvalley/GalForge</RepositoryUrl>
+        <PackageTags>gal;cupl;jedec;pld;gal16v8;gal20v8;gal22v10;atf22v10;wincupl</PackageTags>
     </PropertyGroup>
 
     <ItemGroup>
         <InternalsVisibleTo Include="GalForge.Tests" />
+        <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     </ItemGroup>
 
 </Project>

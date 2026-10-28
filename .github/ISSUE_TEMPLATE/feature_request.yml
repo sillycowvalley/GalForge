@@ -1,0 +1,21 @@
+name: Feature request
+description: Something GalForge doesn't do yet, such as a CUPL feature or a device.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What you want GalForge to do
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: An example
+      description: A small .pld that uses the feature, and what it should compile to.
+      render: text
+  - type: textarea
+    id: why
+    attributes:
+      label: What it's for
+      description: The design or job that needs it.
