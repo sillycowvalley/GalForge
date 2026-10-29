@@ -1,7 +1,8 @@
 # A tag such as v1.0.0 builds single-file executables and the dotnet tool
 # package, and attaches them to the GitHub Release of that name: the one
-# drafted on GitHub's Releases page, or a new one if none exists. With a
-# NUGET_API_KEY repository secret it also publishes the tool to nuget.org.
+# drafted on GitHub's Releases page, or a new one if none exists. It then
+# publishes the tool to nuget.org as BiggerTigger by Trusted Publishing: no
+# stored key, just the nuget.org policy naming this repository and this file.
 name: release
 
 on:
@@ -10,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write   # the GitHub token NuGet/login exchanges for a short-lived key
 
 jobs:
   release:
@@ -42,12 +44,10 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" dist/* --title "GalForge $GITHUB_REF_NAME" --generate-notes
           fi
-      - name: NuGet
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-        run: |
-          if [ -n "$NUGET_API_KEY" ]; then
-            dotnet nuget push dist/*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
-          else
-            echo "No NUGET_API_KEY secret: the .nupkg is on the release for uploading by hand."
-          fi
+      - name: NuGet login
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: BiggerTigger
+      - name: NuGet push
+        run: dotnet nuget push dist/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
